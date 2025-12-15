@@ -26,6 +26,11 @@ type StoreState = {
   setSensorReady: (ready: boolean) => void;
   setInputMode: (mode: "eye" | "mouse" | "switch") => void;
   setCalibrationStep: (step: number) => void;
+  /**
+   * 고빈도 시선 업데이트용: React 렌더 최소화를 위해 replace=false로 상태만 갱신.
+   * 구독 중인 컴포넌트가 없으면 렌더가 발생하지 않음.
+   */
+  setGazeFast: (gaze: GazePoint) => void;
 };
 
 export const useStore = create<StoreState>((set) => ({
@@ -61,5 +66,6 @@ export const useStore = create<StoreState>((set) => ({
   setSensorReady: (ready) => set({ sensorReady: ready }),
   setInputMode: (mode) => set({ inputMode: mode }),
   setCalibrationStep: (step) => set({ calibrationStep: step }),
+  setGazeFast: (gaze) => set({ gaze }, false),
 }));
 

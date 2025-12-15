@@ -29,13 +29,13 @@
 
   - [x] `syncUser(clerkId, email?)`: 로그인 직후 호출, 없으면 INSERT, 있으면 UPDATE.
   - [x] `saveDevice(deviceData)`: 보호자 모드 저장 후 `revalidatePath('/admin')`.
-  - [x] `toggleDeviceStatus(deviceId, status)`: 상태 토글 후 재검증 및 로깅 추가.
+  - [x] `toggleDeviceStatus(deviceId, status)`: 상태 토글 후 재검증 및 성공/실패 로깅 추가.
   - [x] 핵심 액션 실행 시 로깅 남기기(요구사항). (`syncUser`, `saveDevice`, `toggleDeviceStatus` 콘솔 로깅 포함)
 
 - [ ] **클라이언트 상태 관리**
 
-  - [ ] Zustand 스토어 설계: 시선 좌표, 장치 목록, 입력 모드, 센서 권한 상태.
-  - [ ] 고빈도 값(시선 좌표)은 ref/setState 대신 빠른 업데이트 경로로 관리.
+  - [x] Zustand 스토어 설계: 시선 좌표, 장치 목록, 입력 모드, 센서 권한 상태(`useStore`).
+  - [x] 고빈도 값(시선 좌표)은 `setGazeFast`로 빠른 업데이트(React 재렌더 최소화).
 
 - [ ] **Auth 플로우**
 

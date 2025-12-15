@@ -196,5 +196,6 @@ export async function toggleDeviceStatus({
 
   revalidatePath("/admin");
   revalidatePath("/access");
+  console.log("[action] toggleDeviceStatus 성공", { deviceId, isActive });
 }
 
