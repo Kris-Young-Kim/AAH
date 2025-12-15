@@ -21,9 +21,9 @@
 
 - [ ] **데이터베이스(Supabase, RLS 비활성 전제)**
 
-  - [ ] `users` 테이블: `clerk_user_id` upsert 로직 작성(Server Action). RLS 사용 금지 확인.
-  - [ ] `devices` 테이블: 좌표(x,y,z)·상태 필드 구조 점검 및 인덱스 생성 여부 확인.
-  - [ ] SQL 스키마(`docs/AAH.sql` 또는 문서) 적용 여부 확인, 마이그레이션 스크립트 정리.
+  - [x] `users` 테이블: `clerk_user_id` upsert 로직 서버 액션(`syncUser`) 구현, RLS 비활성 전제 확인.
+  - [x] `devices` 테이블: 좌표(x,y,z)·상태 필드 구조/인덱스(`idx_devices_user_id`) 확인 완료.
+  - [x] SQL 스키마 `docs/AAH.sql` 정리(RLS 비활성 포함). Supabase에 적용 필요 시 해당 스키마 실행.
 
 - [ ] **서버 액션**
 
