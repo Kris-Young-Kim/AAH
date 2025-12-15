@@ -1,6 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import Providers from "@/providers";
+import SyncUser from "@/components/sync-user";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +19,10 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="ko" suppressHydrationWarning>
         <body className="antialiased bg-background text-foreground">
-          <Providers>{children}</Providers>
+          <Providers>
+            <SyncUser />
+            {children}
+          </Providers>
         </body>
       </html>
     </ClerkProvider>

@@ -39,8 +39,8 @@
 
 - [ ] **Auth 플로우**
 
-  - [ ] `/` 로그인 후 모드 선택 UI 구현(보호자 vs 사용자).
-  - [ ] `ClerkLoaded` 시 `syncUser` 호출하여 Supabase와 동기화.
+  - [x] `/` 로그인 후 모드 선택 UI 구현(보호자 vs 사용자) — 홈 카드로 접근 경로 제공.
+  - [x] `ClerkLoaded` 시 `syncUser` 호출하여 Supabase와 동기화(`SyncUser` 컴포넌트, 전역 배치).
 
 - [ ] **보호자 모드(`/admin`)**
 
