@@ -1,0 +1,8 @@
+{
+  "name": "SpatialLink AR",
+  "description": "Accessible AR control interface using simulated Web SLAM, multimodal inputs, and Gemini-powered object recognition.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
