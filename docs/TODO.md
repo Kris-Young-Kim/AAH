@@ -16,8 +16,8 @@
 
 - [ ] **레이아웃 & 공통 프로바이더**
 
-  - [ ] `app/layout.tsx`에 ClerkProvider, Query/Theme Provider 정상 배치 확인.
-  - [ ] `middleware.ts`로 보호 경로(`/admin`, `/access`) 인증 보호 확인/보완.
+  - [x] `app/layout.tsx`에 ClerkProvider, Query/Theme Provider 정상 배치 확인.
+  - [x] `middleware.ts`에서 보호 경로(`/admin`, `/access`)만 인증 보호(`createRouteMatcher`) 적용, API 포함 matcher 유지.
 
 - [ ] **데이터베이스(Supabase, RLS 비활성 전제)**
 
