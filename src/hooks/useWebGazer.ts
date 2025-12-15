@@ -63,8 +63,19 @@ export function useWebGazer() {
     document.body.appendChild(script);
 
     const rafIdOnCleanup = rafRef.current;
+    const onVisibilityChange = () => {
+      if (!window.webgazer) return;
+      if (document.hidden) {
+        window.webgazer.pause();
+      } else {
+        window.webgazer.resume?.();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       mounted = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (rafIdOnCleanup) cancelAnimationFrame(rafIdOnCleanup);
       if (window.webgazer) {
         window.webgazer.pause();

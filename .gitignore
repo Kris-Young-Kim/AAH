@@ -37,4 +37,4 @@ next-env.d.ts
 
 # database types (선택사항 - 필요시 주석 해제)
 # database.types.ts
-.docs/
+docs/

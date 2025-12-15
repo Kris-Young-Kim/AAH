@@ -6,7 +6,7 @@
   - [x] `.env.local` 생성: Clerk 공개/비밀 키, Supabase URL/anon 키 반영(`env.example` 참고). _(파일 존재 확인)_
   - [x] 패키지 설치 완료(`pnpm install`). `pnpm config set allow-scripts "@clerk/shared sharp unrs-resolver"` 적용. `pnpm lint` 통과, `pnpm test` 스크립트 미정(없음).
   - [x] `spatiallink-ar/` 참고: App.tsx 구조 확인(Setup/Control 모드, 앵커/커서 상태, 모드 토글·스냅·피드백 UI) → 관리자 AR 뷰 설계 시 재사용 포인트 도출.
-  - [ ] `WebGazer-master/` 참고: README·`www/calibration.html` 등 캘리브레이션/모델 자원 검토해 9점 캘리브레이션·self-calibration 자산을 `docs/webgaze.js`에 통합(Lazy load, pause 처리 포함).
+  - [x] `WebGazer-master/` 참고: README·`www/calibration.html`(9점 캘리브레이션, 정확도 측정, SweetAlert UI)·`js/calibration.js`(5회 클릭→노란색·정확도 계산 로직) 검토 및 반영. `src/hooks/useWebGazerCalibration.ts`로 9점 UI/5회 클릭/정확도(평균 분산) 처리, 탭 비활성 시 `webgazer.pause()`/resume 추가(`useWebGazer`).
 
 - [ ] **UI/글꼴/테마**
 
