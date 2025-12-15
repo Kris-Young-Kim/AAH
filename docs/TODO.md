@@ -10,9 +10,9 @@
 
 - [ ] **UI/글꼴/테마**
 
-  - [ ] `globals.css`에서 Pretendard CDN 로드 및 `body` 기본 폰트 적용(메모리 요구사항).
-  - [ ] Tailwind 기본 색 대비 WCAG 2.1 AA 확인, 버튼 최소 96x96px 유지.
-  - [ ] `DEVELOPMENT_GUIDELINES.md` Spacing-First·명명 규칙 준수 여부 점검.
+  - [x] `globals.css`에서 Pretendard CDN 로드 및 `body` 기본 폰트 적용(메모리 요구사항 충족).
+  - [x] Tailwind 기본 색 대비 WCAG 2.1 AA 확인(배경/전경 대비 확보, 버튼 기본 색상 `bg-gray-900 text-white` 적용), 버튼 최소 96x96px 유지(`globals.css` base 스타일 적용).
+  - [x] `DEVELOPMENT_GUIDELINES.md` Spacing-First·명명 규칙 준수 여부 점검(기본 스타일 적용 시 margin 대신 gap/padding 유지, 네이밍 규칙 확인).
 
 - [ ] **레이아웃 & 공통 프로바이더**
 
