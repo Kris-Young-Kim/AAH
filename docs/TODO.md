@@ -27,10 +27,10 @@
 
 - [ ] **서버 액션**
 
-  - [ ] `syncUser(clerkId, email?)`: 로그인 직후 호출, 없으면 INSERT, 있으면 UPDATE.
-  - [ ] `saveDevice(deviceData)`: 보호자 모드 저장 후 `revalidatePath('/admin')`.
-  - [ ] `toggleDeviceStatus(deviceId, status)`: 상태 토글 후 재검증 및 로깅 추가.
-  - [ ] 핵심 액션 실행 시 로깅 남기기(요구사항).
+  - [x] `syncUser(clerkId, email?)`: 로그인 직후 호출, 없으면 INSERT, 있으면 UPDATE.
+  - [x] `saveDevice(deviceData)`: 보호자 모드 저장 후 `revalidatePath('/admin')`.
+  - [x] `toggleDeviceStatus(deviceId, status)`: 상태 토글 후 재검증 및 로깅 추가.
+  - [x] 핵심 액션 실행 시 로깅 남기기(요구사항). (`syncUser`, `saveDevice`, `toggleDeviceStatus` 콘솔 로깅 포함)
 
 - [ ] **클라이언트 상태 관리**
 
