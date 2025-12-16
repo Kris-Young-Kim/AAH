@@ -47,7 +47,11 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
   const [iconType, setIconType] = useState<"light" | "tv" | "fan">("light");
   const setDevices = useStore((s) => s.setDevices);
   const devices = useStore((s) => s.devices);
-  const [direction, setDirection] = useState<{ x: number; y: number; z: number }>({
+  const [direction, setDirection] = useState<{
+    x: number;
+    y: number;
+    z: number;
+  }>({
     x: 0,
     y: 0,
     z: -2,
@@ -148,7 +152,9 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
           </div>
           <button
             className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
-            onClick={() => alert("디바이스를 향해 조준 후 추가 버튼을 눌러주세요.")}
+            onClick={() =>
+              alert("디바이스를 향해 조준 후 추가 버튼을 눌러주세요.")
+            }
           >
             조준 안내
           </button>
@@ -268,7 +274,8 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
                 </button>
               </div>
               <div className="text-xs text-gray-500">
-                x: {device.position_x.toFixed(2)} / y: {device.position_y.toFixed(2)} / z:{" "}
+                x: {device.position_x.toFixed(2)} / y:{" "}
+                {device.position_y.toFixed(2)} / z:{" "}
                 {device.position_z.toFixed(2)}
               </div>
               <div className="flex gap-2">
@@ -318,4 +325,3 @@ function MarkerMesh({ device }: { device: Device }) {
     </group>
   );
 }
-
