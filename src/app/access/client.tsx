@@ -8,6 +8,7 @@ import { useStore } from "@/hooks/useStore";
 import { useDeviceSync } from "@/hooks/useDeviceSync";
 import { useWebGazer } from "@/hooks/useWebGazer";
 import { useWebGazerCalibration } from "@/hooks/useWebGazerCalibration";
+import { trackEvent } from "@/lib/analytics";
 
 type Device = Database["public"]["Tables"]["devices"]["Row"];
 
@@ -54,6 +55,14 @@ export default function AccessClient({ initialDevices }: Props) {
               await toggleDeviceStatus({
                 deviceId: target.id,
                 isActive: !target.is_active,
+              });
+              trackEvent({
+                name: "device_clicked",
+                properties: {
+                  deviceId: target.id,
+                  deviceName: target.name,
+                  method: "dwell",
+                },
               });
             });
           }

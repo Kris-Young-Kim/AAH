@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 type CalibrationStatus = "idle" | "running" | "completed";
 
@@ -98,7 +99,9 @@ export function useWebGazerCalibration(
         const dy = p[1] - mean[1];
         return acc + Math.sqrt(dx * dx + dy * dy);
       }, 0) / stored.length;
-    setAccuracy(Number.isFinite(avgDist) ? avgDist : null);
+    const finalAccuracy = Number.isFinite(avgDist) ? avgDist : null;
+    setAccuracy(finalAccuracy);
+    return finalAccuracy;
   }, []);
 
   const renderOverlay = useCallback(() => {
@@ -144,7 +147,16 @@ export function useWebGazerCalibration(
         const allDone = Object.values(pointsRef.current).every((pt) => pt.done);
         if (allDone) {
           setStatus("completed");
-          updateAccuracy();
+          const pointCount = Object.keys(pointsRef.current).length;
+          const finalAccuracy = updateAccuracy();
+          // 정확도 이벤트 전송
+          trackEvent({
+            name: "calibration_completed",
+            properties: {
+              accuracy: finalAccuracy ?? 0,
+              pointCount,
+            },
+          });
           setTimeout(() => destroyOverlay(), 300);
         }
       };
@@ -161,6 +173,10 @@ export function useWebGazerCalibration(
     setAccuracy(null);
     setStatus("running");
     renderOverlay();
+    trackEvent({
+      name: "calibration_started",
+      properties: {},
+    });
   }, [renderOverlay, resetPoints]);
 
   const reset = useCallback(() => {

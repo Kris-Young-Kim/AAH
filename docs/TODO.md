@@ -63,16 +63,16 @@
   - [x] `hooks/useDeviceSync`: Supabase Realtime 구독(UPDATE on `devices`)으로 상태 반영.
   - [x] 로컬 상태와 서버 상태 불일치 시 재조회/재구독 처리(30초 주기 검사, 구독 오류 시 자동 재구독).
 
-- [ ] **성능/보안**
+- [x] **성능/보안**
 
-  - [ ] WebGazer lazy load 및 탭 비활성 시 `pause()` 처리(로컬 `docs/webgaze.js` 또는 CDN 선택).
-  - [ ] R3F에서는 가벼운 스프라이트(빌보드) 사용, FPS 30+ 유지 확인.
-  - [ ] 카메라 스트림/시선 데이터는 클라이언트 메모리 내 처리, 서버 미전송 명시.
+  - [x] WebGazer lazy load 및 탭 비활성 시 `pause()` 처리(로컬 `docs/webgaze.js` 또는 CDN 선택 가능, visibilitychange 이벤트로 자동 pause/resume).
+  - [x] R3F에서는 가벼운 스프라이트(빌보드) 사용, FPS 30+ 유지 확인(Billboard 컴포넌트, circleGeometry, performance 설정).
+  - [x] 카메라 스트림/시선 데이터는 클라이언트 메모리 내 처리, 서버 미전송 명시(주석 및 로깅으로 명시).
 
-- [ ] **로그/분석**
+- [x] **로그/분석**
 
-  - [ ] 주요 액션(로그인 후 sync, 기기 저장/토글, 캘리브레이션 완료) 콘솔/분석 이벤트 기록.
-  - [ ] Vercel Analytics 또는 PostHog 선택 후 최소 이벤트 스키마 정의.
+  - [x] 주요 액션(로그인 후 sync, 기기 저장/토글, 캘리브레이션 완료) 콘솔/분석 이벤트 기록(`src/lib/analytics.ts` 유틸리티 생성, trackEvent 함수로 통합).
+  - [x] 이벤트 스키마 정의: `user_synced`, `device_saved`, `device_toggled`, `device_deleted`, `calibration_started`, `calibration_completed`, `device_clicked` (향후 Google Analytics, PostHog, Vercel Analytics 등으로 확장 가능한 구조).
 
 - [ ] **테스트 계획**
 

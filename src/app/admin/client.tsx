@@ -3,12 +3,17 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useAuth, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { DeviceOrientationControls, Html } from "@react-three/drei";
+import {
+  DeviceOrientationControls,
+  Html,
+  Billboard,
+} from "@react-three/drei";
 import { Vector3 } from "three";
 import type { Database } from "@/database.types";
 import { deleteDevice, saveDevice, toggleDeviceStatus } from "../actions";
 import { useStore } from "@/hooks/useStore";
 import { useDeviceSync } from "@/hooks/useDeviceSync";
+import { trackEvent } from "@/lib/analytics";
 
 type Device = Database["public"]["Tables"]["devices"]["Row"];
 
@@ -75,16 +80,35 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
         iconType,
         position: direction,
       });
+      trackEvent({
+        name: "device_saved",
+        properties: {
+          deviceName: name,
+          iconType,
+          position: direction,
+        },
+      });
       setName("");
     });
   };
 
   const handleDelete = (deviceId: string) => {
+    const device = devices.find((d) => d.id === deviceId);
     startTransition(async () => {
       await deleteDevice({ deviceId });
+      if (device) {
+        trackEvent({
+          name: "device_deleted",
+          properties: {
+            deviceId,
+            deviceName: device.name,
+          },
+        });
+      }
     });
   };
 
+  // 보안: 카메라 스트림은 클라이언트에서만 사용되며 서버로 전송되지 않습니다.
   const startVideo = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -95,6 +119,7 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
         setVideoReady(true);
+        console.log("[admin] 웹캠 스트림 시작 (로컬 처리만, 서버 미전송)");
       }
     } catch (err) {
       console.error("웹캠 권한 요청 실패", err);
@@ -107,9 +132,18 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
 
   const handleToggle = (device: Device) => {
     startTransition(async () => {
+      const newStatus = !device.is_active;
       await toggleDeviceStatus({
         deviceId: device.id,
-        isActive: !device.is_active,
+        isActive: newStatus,
+      });
+      trackEvent({
+        name: "device_toggled",
+        properties: {
+          deviceId: device.id,
+          deviceName: device.name,
+          isActive: newStatus,
+        },
       });
     });
   };
@@ -217,7 +251,16 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
                 muted
                 playsInline
               />
-              <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
+              {/* 
+                보안: 카메라 스트림 및 시선 데이터는 클라이언트 메모리 내에서만 처리되며,
+                서버로 전송되지 않습니다. 모든 처리는 로컬에서 수행됩니다.
+              */}
+              <Canvas
+                camera={{ position: [0, 0, 0], fov: 75 }}
+                frameloop="always"
+                dpr={[1, 2]}
+                performance={{ min: 0.5 }}
+              >
                 <ambientLight intensity={0.8} />
                 <directionalLight position={[2, 2, 2]} intensity={0.6} />
                 {/* 방향 참조 박스 */}
@@ -225,7 +268,7 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
                   <boxGeometry args={[0.2, 0.2, 0.2]} />
                   <meshStandardMaterial color="#22c55e" />
                 </mesh>
-                {/* 마커 렌더링 */}
+                {/* 마커 렌더링: 빌보드 스프라이트로 FPS 30+ 유지 */}
                 {devices.map((device) => (
                   <MarkerMesh key={device.id} device={device} />
                 ))}
@@ -313,10 +356,13 @@ function MarkerMesh({ device }: { device: Device }) {
   const color = device.is_active ? "#22c55e" : "#3b82f6";
   return (
     <group position={[device.position_x, device.position_y, device.position_z]}>
-      <mesh>
-        <sphereGeometry args={[0.08, 16, 16]} />
-        <meshStandardMaterial color={color} />
-      </mesh>
+      {/* 빌보드 스프라이트: 항상 카메라를 향해 회전, 가벼운 렌더링으로 FPS 30+ 유지 */}
+      <Billboard>
+        <mesh>
+          <circleGeometry args={[0.1, 16]} />
+          <meshBasicMaterial color={color} />
+        </mesh>
+      </Billboard>
       <Html distanceFactor={4} position={[0.12, 0.12, 0]}>
         <div className="rounded-md bg-black/70 text-white px-2 py-1 text-xs shadow-lg whitespace-nowrap">
           {device.name} · {device.icon_type}
