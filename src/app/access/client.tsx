@@ -7,6 +7,7 @@ import { toggleDeviceStatus } from "../actions";
 import { useStore } from "@/hooks/useStore";
 import { useDeviceSync } from "@/hooks/useDeviceSync";
 import { useWebGazer } from "@/hooks/useWebGazer";
+import { useWebGazerCalibration } from "@/hooks/useWebGazerCalibration";
 
 type Device = Database["public"]["Tables"]["devices"]["Row"];
 
@@ -14,18 +15,6 @@ type Props = {
   clerkUserId: string;
   initialDevices: Device[];
 };
-
-const calibrationPoints = [
-  { x: 10, y: 10 },
-  { x: 50, y: 10 },
-  { x: 90, y: 10 },
-  { x: 10, y: 50 },
-  { x: 50, y: 50 },
-  { x: 90, y: 50 },
-  { x: 10, y: 90 },
-  { x: 50, y: 90 },
-  { x: 90, y: 90 },
-];
 
 export default function AccessClient({ initialDevices }: Props) {
   const { isSignedIn } = useAuth();
@@ -37,9 +26,11 @@ export default function AccessClient({ initialDevices }: Props) {
   const dwellProgressMs = useStore((s) => s.dwellProgressMs);
   const setDwellProgress = useStore((s) => s.setDwellProgress);
   const sensorReady = useStore((s) => s.sensorReady);
-  const [calibrationStep, setCalibrationStep] = useState(0);
-  const [calibrationDone, setCalibrationDone] = useState(false);
+  const gaze = useStore((s) => s.gaze);
   const dwellStartRef = useRef<number | null>(null);
+  const { status: calStatus, accuracy, startCalibration, resetCalibration } =
+    useWebGazerCalibration();
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useDeviceSync();
   useWebGazer();
@@ -90,18 +81,45 @@ export default function AccessClient({ initialDevices }: Props) {
 
   const requestSensorPermission = () => {
     if (typeof DeviceOrientationEvent?.requestPermission === "function") {
-      DeviceOrientationEvent.requestPermission().catch((err) =>
-        console.error("권한 요청 실패", err)
-      );
+      DeviceOrientationEvent.requestPermission()
+        .then((res) => console.log("orientation permission", res))
+        .catch((err) => console.error("권한 요청 실패", err));
     }
+  };
+  const resetView = () => {
+    setSnappedDevice(null);
+    setDwellProgress(0);
   };
 
-  const handleCalibrationClick = () => {
-    if (calibrationStep >= calibrationPoints.length - 1) {
-      setCalibrationDone(true);
-    }
-    setCalibrationStep((prev) => Math.min(calibrationPoints.length - 1, prev + 1));
-  };
+  // 가상 커서 + 마그네틱 스냅 (히트박스 1.5배)
+  useEffect(() => {
+    let rafId: number;
+    const loop = () => {
+      let nextSnap: string | null = null;
+      devices.forEach((device) => {
+        const el = cardRefs.current[device.id];
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const expandedWidth = rect.width * 1.5;
+        const expandedHeight = rect.height * 1.5;
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const left = cx - expandedWidth / 2;
+        const top = cy - expandedHeight / 2;
+        const right = cx + expandedWidth / 2;
+        const bottom = cy + expandedHeight / 2;
+        if (gaze.x >= left && gaze.x <= right && gaze.y >= top && gaze.y <= bottom) {
+          nextSnap = device.id;
+        }
+      });
+      if (nextSnap !== snappedDeviceId) {
+        setSnappedDevice(nextSnap);
+      }
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, [devices, gaze.x, gaze.y, setSnappedDevice, snappedDeviceId]);
 
   if (!isSignedIn) {
     return (
@@ -130,42 +148,41 @@ export default function AccessClient({ initialDevices }: Props) {
         >
           시작하기(센서 권한)
         </button>
+        <button
+          className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
+          onClick={resetView}
+        >
+          뷰 리셋
+        </button>
         <span className="text-sm text-gray-500">
           센서 상태: {sensorReady ? "준비 완료" : "대기"}
         </span>
       </div>
 
       <section className="relative rounded-2xl border border-gray-200 dark:border-gray-800 p-6 min-h-[320px] overflow-hidden">
-        {!calibrationDone && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div
-              className="w-6 h-6 rounded-full bg-red-500 shadow-lg"
-              style={{
-                position: "absolute",
-                left: `${calibrationPoints[calibrationStep].x}%`,
-                top: `${calibrationPoints[calibrationStep].y}%`,
-                transform: "translate(-50%, -50%)",
-              }}
-            />
-          </div>
-        )}
         <div className="space-y-3">
           <h2 className="text-h2">9점 캘리브레이션</h2>
           <p className="text-body-2 text-gray-600 dark:text-gray-300">
-            표시된 점을 순서대로 응시하거나 클릭하세요. 끝나면 자동으로 제어 모드가
-            활성화됩니다.
+            “캘리브레이션 시작”을 눌러 9점 오버레이를 완료하면 정확도 피드백이 표시됩니다.
           </p>
           <button
-            onClick={handleCalibrationClick}
+            onClick={() => startCalibration()}
             className="h-11 px-4 rounded-full bg-black text-white hover:opacity-90"
           >
-            다음 점으로 이동 ({calibrationStep + 1}/9)
+            {calStatus === "running" ? "진행 중..." : "캘리브레이션 시작"}
           </button>
-          {calibrationDone && (
+          {calStatus === "completed" && (
             <div className="text-emerald-600 text-body-2">
-              캘리브레이션 완료! 아래 기기 목록을 응시하면 스냅/드웰이 작동합니다.
+              캘리브레이션 완료! 정확도(평균 분산):{" "}
+              {accuracy != null ? `${accuracy.toFixed(1)}px` : "측정 불가"}.
             </div>
           )}
+          <button
+            onClick={() => resetCalibration()}
+            className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
+          >
+            캘리브레이션 리셋
+          </button>
         </div>
       </section>
 
@@ -185,6 +202,9 @@ export default function AccessClient({ initialDevices }: Props) {
             return (
               <div
                 key={device.id}
+                ref={(el) => {
+                  cardRefs.current[device.id] = el;
+                }}
                 onMouseEnter={() => setSnappedDevice(device.id)}
                 onMouseLeave={() => setSnappedDevice(null)}
                 className={`rounded-xl border p-4 cursor-pointer transition ${
@@ -220,6 +240,19 @@ export default function AccessClient({ initialDevices }: Props) {
           )}
         </div>
       </section>
+
+      {/* 가상 커서 오버레이 */}
+      <div className="pointer-events-none fixed inset-0">
+        <div
+          className={`absolute w-5 h-5 rounded-full border-2 ${
+            snappedDeviceId ? "border-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]" : "border-white shadow-[0_0_8px_rgba(255,255,255,0.6)]"
+          } bg-white/20 backdrop-blur`}
+          style={{
+            transform: `translate(${gaze.x - 10}px, ${gaze.y - 10}px)`,
+            transition: "transform 80ms linear",
+          }}
+        />
+      </div>
     </div>
   );
 }

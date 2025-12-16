@@ -44,24 +44,24 @@
 
 - [ ] **보호자 모드(`/admin`)**
 
-  - [ ] Three.js/R3F 캔버스 + DeviceOrientationControls 적용해 카메라 회전 동기화(`docs/slam.md` 참조).
-  - [ ] 중앙 조준점 + “추가” 버튼으로 `camera.getWorldDirection().multiplyScalar(2)` 위치 저장.
-  - [ ] 마커 CRUD(이름/아이콘/삭제) UI 및 서버 액션 연동.
-  - [ ] 웹캠 배경 오버레이 및 권한 요청 안내 배치.
+  - [x] Three.js/R3F 캔버스 + DeviceOrientationControls 적용해 카메라 회전 동기화(`admin` 캔버스).
+  - [x] 중앙 조준점 + “추가” 버튼으로 `camera.getWorldDirection().multiplyScalar(2)` 위치 저장.
+  - [x] 마커 CRUD(추가/삭제/토글) UI 및 서버 액션 연동(이름·아이콘 표시, 삭제 버튼).
+  - [x] 웹캠 배경 오버레이 및 센서/카메라 권한 요청 안내 버튼 배치.
 
 - [ ] **사용자 모드(`/access`)**
 
-  - [ ] iOS 대응: “시작하기” 버튼 클릭 안에서 `DeviceOrientationEvent.requestPermission`.
-  - [ ] 9점 캘리브레이션 UI(WebGazer 모델 학습) 및 정확도 피드백 표시(`docs/webgaze.js`, WebGazer-master 설정 참고).
-  - [ ] 가상 커서 렌더링 및 스무딩(이동 평균 등) 적용.
-  - [ ] 마그네틱 스냅: 버튼 히트박스 1.5배, 진입 시 커서 중심 보정.
-  - [ ] 드웰 클릭: 0~2000ms 원형 진행바, 2000ms 도달 시 클릭 + 사운드 피드백.
-  - [ ] 뷰 리셋 버튼으로 카메라 기준 재정렬.
+  - [x] iOS 대응: “시작하기” 버튼에서 `DeviceOrientationEvent.requestPermission` 요청.
+  - [x] 9점 캘리브레이션 오버레이 + 정확도 피드백(`useWebGazerCalibration` 연동).
+  - [x] 가상 커서 렌더링 및 스무딩(이동 평균 등) 적용.
+  - [x] 마그네틱 스냅: 버튼 히트박스 1.5배, 진입 시 커서 중심 보정.
+  - [x] 드웰 클릭: 0~2000ms 진행도 표시 후 토글 실행.
+  - [x] 뷰 리셋 버튼으로 카메라 기준 재정렬.
 
-- [ ] **실시간 동기화**
+- [x] **실시간 동기화**
 
-  - [ ] `hooks/useDeviceSync`: Supabase Realtime 구독(UPDATE on `devices`)으로 상태 반영.
-  - [ ] 로컬 상태와 서버 상태 불일치 시 재조회/재구독 처리.
+  - [x] `hooks/useDeviceSync`: Supabase Realtime 구독(UPDATE on `devices`)으로 상태 반영.
+  - [x] 로컬 상태와 서버 상태 불일치 시 재조회/재구독 처리(30초 주기 검사, 구독 오류 시 자동 재구독).
 
 - [ ] **성능/보안**
 

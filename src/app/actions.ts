@@ -199,3 +199,19 @@ export async function toggleDeviceStatus({
   console.log("[action] toggleDeviceStatus 성공", { deviceId, isActive });
 }
 
+export async function deleteDevice({ deviceId }: { deviceId: string }) {
+  const supabase = getSupabaseServer();
+  console.log("[action] deleteDevice", { deviceId });
+
+  const { error } = await supabase.from("devices").delete().eq("id", deviceId);
+
+  if (error) {
+    console.error("[action] deleteDevice 실패", error);
+    throw error;
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/access");
+  console.log("[action] deleteDevice 성공", { deviceId });
+}
+
