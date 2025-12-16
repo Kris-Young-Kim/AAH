@@ -29,13 +29,14 @@ export default function SyncUser() {
             isNewUser: false,
           },
         });
+        // 성공 시에만 hasSynced를 true로 설정하여 재시도 방지
+        setHasSynced(true);
       })
       .catch((err) => {
         console.error("[syncUser] client 호출 실패", err);
+        // 실패 시 hasSynced는 false로 유지되어 재시도 가능
       });
-    setHasSynced(true);
   }, [hasSynced, isSignedIn, user]);
 
   return null;
 }
-

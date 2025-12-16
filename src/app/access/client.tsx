@@ -15,9 +15,13 @@ type Device = Database["public"]["Tables"]["devices"]["Row"];
 type Props = {
   clerkUserId: string;
   initialDevices: Device[];
+  inputMode: "eye" | "mouse" | "switch";
 };
 
-export default function AccessClient({ initialDevices }: Props) {
+export default function AccessClient({
+  initialDevices,
+  inputMode,
+}: Props) {
   const { isSignedIn } = useAuth();
   const [pending, startTransition] = useTransition();
   const setDevices = useStore((s) => s.setDevices);
@@ -34,7 +38,13 @@ export default function AccessClient({ initialDevices }: Props) {
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useDeviceSync();
-  useWebGazer();
+  const { startWebGazer, isLoaded: webgazerLoaded } = useWebGazer();
+  const setInputMode = useStore((s) => s.setInputMode);
+
+  // 입력 방식 설정
+  useEffect(() => {
+    setInputMode(inputMode);
+  }, [inputMode, setInputMode]);
 
   useEffect(() => {
     setDevices(initialDevices);
@@ -88,11 +98,101 @@ export default function AccessClient({ initialDevices }: Props) {
     [dwellProgressMs]
   );
 
-  const requestSensorPermission = () => {
-    if (typeof DeviceOrientationEvent?.requestPermission === "function") {
-      DeviceOrientationEvent.requestPermission()
-        .then((res) => console.log("orientation permission", res))
-        .catch((err) => console.error("권한 요청 실패", err));
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+
+  const requestSensorPermission = async () => {
+    setPermissionError(null);
+    
+    try {
+      // iOS 센서 권한 요청
+      if (typeof DeviceOrientationEvent?.requestPermission === "function") {
+        const orientationResult = await DeviceOrientationEvent.requestPermission();
+        console.log("[access] orientation permission", orientationResult);
+        
+        if (orientationResult !== "granted") {
+          setPermissionError("센서 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.");
+          return;
+        }
+      }
+
+      // WebGazer가 로드될 때까지 대기
+      if (!webgazerLoaded) {
+        setPermissionError("WebGazer가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+
+      // 먼저 웹캠 권한을 명시적으로 요청 (사용자 인터랙션 후)
+      let stream: MediaStream | null = null;
+      try {
+        console.log("[access] 웹캠 권한 요청 중...");
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: "user", // 전면 카메라 우선
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          } 
+        });
+        console.log("[access] 웹캠 권한 허용됨");
+        
+        // 권한이 허용되면 스트림 종료 (WebGazer가 다시 요청할 것)
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+      } catch (err: any) {
+        if (err.name === "NotAllowedError") {
+          setPermissionError(
+            "웹캠 권한이 거부되었습니다.\n\n" +
+            "해결 방법:\n" +
+            "1. 브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하세요\n" +
+            "2. '카메라' 권한을 '허용'으로 변경하세요\n" +
+            "3. 페이지를 새로고침한 후 다시 시도하세요"
+          );
+          return;
+        } else if (err.name === "NotFoundError") {
+          setPermissionError("카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.");
+          return;
+        } else if (err.name === "NotReadableError" || err.message?.includes("Device in use") || err.message?.includes("in use")) {
+          setPermissionError(
+            "카메라가 다른 애플리케이션에서 사용 중입니다.\n\n" +
+            "해결 방법:\n" +
+            "1. 다른 애플리케이션(예: Zoom, Teams, 다른 브라우저 탭)에서 카메라를 종료하세요\n" +
+            "2. 이 페이지를 새로고침하세요\n" +
+            "3. 다시 '시작하기' 버튼을 클릭하세요"
+          );
+          return;
+        } else if (err.name === "OverconstrainedError") {
+          setPermissionError(
+            "요청한 카메라 설정을 지원하지 않습니다.\n\n" +
+            "다른 카메라를 사용하거나 브라우저 설정을 확인해주세요."
+          );
+          return;
+        } else {
+          setPermissionError(
+            `웹캠 권한 요청 실패: ${err.message || err.name}\n\n` +
+            "브라우저 콘솔에서 자세한 오류 정보를 확인할 수 있습니다."
+          );
+          return;
+        }
+      }
+
+      // 권한이 허용된 후 WebGazer 시작
+      try {
+        console.log("[access] WebGazer 시작 중...");
+        const success = await startWebGazer();
+        if (success) {
+          console.log("[access] WebGazer 시작 성공");
+          setPermissionError(null);
+        }
+      } catch (err: any) {
+        console.error("[access] WebGazer 시작 실패", err);
+        if (err.message?.includes("권한")) {
+          setPermissionError(err.message);
+        } else {
+          setPermissionError(`WebGazer 시작 실패: ${err.message || err.name}`);
+        }
+      }
+    } catch (err: any) {
+      setPermissionError(`권한 요청 중 오류가 발생했습니다: ${err.message}`);
+      console.error("[access] 권한 요청 실패", err);
     }
   };
   const resetView = () => {
@@ -147,53 +247,156 @@ export default function AccessClient({ initialDevices }: Props) {
     );
   }
 
+  // 입력 방식에 따른 처리
+  const isEyeMode = inputMode === "eye";
+  const isMouseMode = inputMode === "mouse";
+  const isSwitchMode = inputMode === "switch";
+
+  // 마우스 모드: 직접 클릭으로 기기 제어
+  const handleMouseClick = (device: Device) => {
+    startTransition(async () => {
+      await toggleDeviceStatus({
+        deviceId: device.id,
+        isActive: !device.is_active,
+      });
+      trackEvent({
+        name: "device_clicked",
+        properties: {
+          deviceId: device.id,
+          deviceName: device.name,
+          method: "mouse",
+        },
+      });
+    });
+  };
+
+  // 스위치 모드: 스캔 방식 (순차적으로 하이라이트)
+  const [switchIndex, setSwitchIndex] = useState(0);
+  const switchIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (isSwitchMode && devices.length > 0) {
+      switchIntervalRef.current = setInterval(() => {
+        setSwitchIndex((prev) => (prev + 1) % devices.length);
+      }, 2000); // 2초마다 다음 기기로 이동
+      return () => {
+        if (switchIntervalRef.current) {
+          clearInterval(switchIntervalRef.current);
+        }
+      };
+    } else {
+      if (switchIntervalRef.current) {
+        clearInterval(switchIntervalRef.current);
+      }
+    }
+  }, [isSwitchMode, devices.length]);
+
+  // 스위치 모드: 스페이스바 또는 엔터 키로 선택
+  useEffect(() => {
+    if (!isSwitchMode) return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        if (devices.length === 0) return;
+        const device = devices[switchIndex];
+        handleMouseClick(device);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => {
+      window.removeEventListener("keydown", handleKeyPress);
+    };
+  }, [isSwitchMode, devices, switchIndex]);
+
+  const handleSwitchClick = () => {
+    if (devices.length === 0) return;
+    const device = devices[switchIndex];
+    handleMouseClick(device);
+  };
+
   return (
     <div className="min-h-screen px-6 md:px-10 py-8 space-y-6">
       <div className="flex flex-wrap gap-3 items-center">
         <h1 className="text-display-2">사용자 모드</h1>
-        <button
-          className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
-          onClick={requestSensorPermission}
-        >
-          시작하기(센서 권한)
-        </button>
-        <button
-          className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
-          onClick={resetView}
-        >
-          뷰 리셋
-        </button>
+        {isEyeMode && (
+          <>
+            <button
+              className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
+              onClick={requestSensorPermission}
+            >
+              시작하기(센서 권한)
+            </button>
+            <button
+              className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
+              onClick={resetView}
+            >
+              뷰 리셋
+            </button>
+            <span className="text-sm text-gray-500">
+              센서 상태: {sensorReady ? "준비 완료" : "대기"}
+            </span>
+          </>
+        )}
+        {isSwitchMode && (
+          <button
+            className="h-12 px-6 rounded-full bg-blue-500 text-white font-medium"
+            onClick={handleSwitchClick}
+          >
+            🔘 선택 ({devices[switchIndex]?.name || "없음"})
+          </button>
+        )}
         <span className="text-sm text-gray-500">
-          센서 상태: {sensorReady ? "준비 완료" : "대기"}
+          입력 방식: {inputMode === "eye" ? "시선 추적" : inputMode === "mouse" ? "마우스 클릭" : "스위치 클릭"}
         </span>
       </div>
-
-      <section className="relative rounded-2xl border border-gray-200 dark:border-gray-800 p-6 min-h-[320px] overflow-hidden">
-        <div className="space-y-3">
-          <h2 className="text-h2">9점 캘리브레이션</h2>
-          <p className="text-body-2 text-gray-600 dark:text-gray-300">
-            “캘리브레이션 시작”을 눌러 9점 오버레이를 완료하면 정확도 피드백이 표시됩니다.
+      {permissionError && (
+        <div className="rounded-xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 p-4">
+          <p className="text-sm text-red-700 dark:text-red-300 font-medium mb-2">
+            권한 오류
           </p>
+          <pre className="text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap font-sans">
+            {permissionError}
+          </pre>
           <button
-            onClick={() => startCalibration()}
-            className="h-11 px-4 rounded-full bg-black text-white hover:opacity-90"
+            onClick={() => setPermissionError(null)}
+            className="mt-3 h-9 px-4 rounded-full bg-red-600 text-white text-sm hover:bg-red-700 transition-colors"
           >
-            {calStatus === "running" ? "진행 중..." : "캘리브레이션 시작"}
-          </button>
-          {calStatus === "completed" && (
-            <div className="text-emerald-600 text-body-2">
-              캘리브레이션 완료! 정확도(평균 분산):{" "}
-              {accuracy != null ? `${accuracy.toFixed(1)}px` : "측정 불가"}.
-            </div>
-          )}
-          <button
-            onClick={() => resetCalibration()}
-            className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
-          >
-            캘리브레이션 리셋
+            닫기
           </button>
         </div>
-      </section>
+      )}
+
+      {/* 시선 추적 모드: 캘리브레이션 섹션 */}
+      {isEyeMode && (
+        <section className="relative rounded-2xl border border-gray-200 dark:border-gray-800 p-6 min-h-[320px] overflow-hidden">
+          <div className="space-y-3">
+            <h2 className="text-h2">9점 캘리브레이션</h2>
+            <p className="text-body-2 text-gray-600 dark:text-gray-300">
+              "캘리브레이션 시작"을 눌러 9점 오버레이를 완료하면 정확도 피드백이 표시됩니다.
+            </p>
+            <button
+              onClick={() => startCalibration()}
+              className="h-11 px-4 rounded-full bg-black text-white hover:opacity-90"
+            >
+              {calStatus === "running" ? "진행 중..." : "캘리브레이션 시작"}
+            </button>
+            {calStatus === "completed" && (
+              <div className="text-emerald-600 text-body-2">
+                캘리브레이션 완료! 정확도(평균 분산):{" "}
+                {accuracy != null ? `${accuracy.toFixed(1)}px` : "측정 불가"}.
+              </div>
+            )}
+            <button
+              onClick={() => resetCalibration()}
+              className="h-10 px-3 rounded-full border border-gray-300 dark:border-gray-700"
+            >
+              캘리브레이션 리셋
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -206,21 +409,39 @@ export default function AccessClient({ initialDevices }: Props) {
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {devices.map((device) => {
-            const active = snappedDeviceId === device.id;
+          {devices.map((device, index) => {
+            const active = isEyeMode && snappedDeviceId === device.id;
+            const switchActive = isSwitchMode && switchIndex === index;
+            const isHighlighted = active || switchActive;
+            
             return (
               <div
                 key={device.id}
                 ref={(el) => {
                   cardRefs.current[device.id] = el;
                 }}
-                onMouseEnter={() => setSnappedDevice(device.id)}
-                onMouseLeave={() => setSnappedDevice(null)}
-                className={`rounded-xl border p-4 cursor-pointer transition ${
-                  active
-                    ? "border-blue-500 shadow-lg"
+                onMouseEnter={() => {
+                  if (isMouseMode) {
+                    setSnappedDevice(device.id);
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (isMouseMode) {
+                    setSnappedDevice(null);
+                  }
+                }}
+                onClick={() => {
+                  if (isMouseMode) {
+                    handleMouseClick(device);
+                  }
+                }}
+                className={`rounded-xl border p-4 transition ${
+                  isHighlighted
+                    ? "border-blue-500 shadow-lg ring-4 ring-blue-500/30"
                     : "border-gray-200 dark:border-gray-800"
-                } ${device.is_active ? "bg-yellow-50 dark:bg-yellow-950/40" : ""}`}
+                } ${device.is_active ? "bg-yellow-50 dark:bg-yellow-950/40" : ""} ${
+                  isMouseMode ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900" : ""
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div>
@@ -229,11 +450,18 @@ export default function AccessClient({ initialDevices }: Props) {
                       {device.icon_type} · {device.is_active ? "On" : "Off"}
                     </p>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    스냅 반경 1.5x 적용
-                  </div>
+                  {isEyeMode && (
+                    <div className="text-xs text-gray-500">
+                      스냅 반경 1.5x 적용
+                    </div>
+                  )}
+                  {isSwitchMode && switchActive && (
+                    <div className="text-xs text-blue-600 font-medium">
+                      선택됨
+                    </div>
+                  )}
                 </div>
-                {active && (
+                {isEyeMode && active && (
                   <div className="mt-3 h-2 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
                     <div
                       className="h-full bg-blue-500 transition-[width]"
@@ -250,18 +478,46 @@ export default function AccessClient({ initialDevices }: Props) {
         </div>
       </section>
 
-      {/* 가상 커서 오버레이 */}
-      <div className="pointer-events-none fixed inset-0">
-        <div
-          className={`absolute w-5 h-5 rounded-full border-2 ${
-            snappedDeviceId ? "border-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]" : "border-white shadow-[0_0_8px_rgba(255,255,255,0.6)]"
-          } bg-white/20 backdrop-blur`}
-          style={{
-            transform: `translate(${gaze.x - 10}px, ${gaze.y - 10}px)`,
-            transition: "transform 80ms linear",
-          }}
-        />
-      </div>
+      {/* 가상 커서 오버레이 (시선 추적 모드만) */}
+      {isEyeMode && sensorReady && (
+        <div className="pointer-events-none fixed inset-0">
+          {/* 외곽 링 */}
+          <div
+            className={`absolute rounded-full z-50 ${
+              snappedDeviceId 
+                ? "border-4 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,1)]" 
+                : "border-4 border-red-500 shadow-[0_0_20px_rgba(239,68,68,1)]"
+            }`}
+            style={{
+              width: "24px",
+              height: "24px",
+              left: `${Math.max(0, Math.min(window.innerWidth, gaze.x - 12))}px`,
+              top: `${Math.max(0, Math.min(window.innerHeight, gaze.y - 12))}px`,
+              transition: "left 50ms linear, top 50ms linear",
+            }}
+          />
+          {/* 내부 점 */}
+          <div
+            className={`absolute rounded-full z-50 ${
+              snappedDeviceId ? "bg-blue-500" : "bg-red-500"
+            }`}
+            style={{
+              width: "12px",
+              height: "12px",
+              left: `${Math.max(0, Math.min(window.innerWidth, gaze.x - 6))}px`,
+              top: `${Math.max(0, Math.min(window.innerHeight, gaze.y - 6))}px`,
+              transition: "left 50ms linear, top 50ms linear",
+              boxShadow: "0 0 10px rgba(0,0,0,0.8)",
+            }}
+          />
+        </div>
+      )}
+      {/* 디버그: gaze 좌표 표시 (개발용) */}
+      {process.env.NODE_ENV === "development" && sensorReady && (
+        <div className="fixed top-4 right-4 bg-black/70 text-white px-3 py-2 rounded text-xs font-mono z-50">
+          Gaze: ({Math.round(gaze.x)}, {Math.round(gaze.y)})
+        </div>
+      )}
     </div>
   );
 }

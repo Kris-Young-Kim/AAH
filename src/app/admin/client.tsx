@@ -10,7 +10,7 @@ import {
 } from "@react-three/drei";
 import { Vector3 } from "three";
 import type { Database } from "@/database.types";
-import { deleteDevice, saveDevice, toggleDeviceStatus } from "../actions";
+import { deleteDevice, saveDevice, toggleDeviceStatus, updateInputMode } from "../actions";
 import { useStore } from "@/hooks/useStore";
 import { useDeviceSync } from "@/hooks/useDeviceSync";
 import { trackEvent } from "@/lib/analytics";
@@ -45,11 +45,16 @@ function DirectionTracker({
   return <DeviceOrientationControls />;
 }
 
-export default function AdminClient({ clerkUserId, initialDevices }: Props) {
+export default function AdminClient({
+  clerkUserId,
+  initialDevices,
+  currentInputMode,
+}: Props) {
   const { isSignedIn } = useAuth();
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [iconType, setIconType] = useState<"light" | "tv" | "fan">("light");
+  const [inputMode, setInputMode] = useState<"eye" | "mouse" | "switch">(currentInputMode);
   const setDevices = useStore((s) => s.setDevices);
   const devices = useStore((s) => s.devices);
   const [direction, setDirection] = useState<{
@@ -174,9 +179,57 @@ export default function AdminClient({ clerkUserId, initialDevices }: Props) {
           2m 앞 위치 저장)
         </p>
         <div className="text-sm text-orange-600 dark:text-orange-400">
-          iOS: 센서 권한을 위해 “시작하기” 버튼(아래 권한 안내)을 눌러주세요.
+          iOS: 센서 권한을 위해 "시작하기" 버튼(아래 권한 안내)을 눌러주세요.
         </div>
       </div>
+
+      {/* 입력 방식 선택 섹션 */}
+      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+        <div>
+          <h2 className="text-h2 mb-2">입력 방식 설정</h2>
+          <p className="text-body-2 text-gray-600 dark:text-gray-300">
+            사용자가 사용할 입력 방식을 선택하세요. 선택한 방식에 따라 사용자 모드의 인터페이스가 변경됩니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => handleInputModeChange("eye")}
+            disabled={pending}
+            className={`h-12 px-6 rounded-full text-sm font-medium transition-all ${
+              inputMode === "eye"
+                ? "bg-blue-500 text-white shadow-lg"
+                : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+            }`}
+          >
+            👁️ 시선 추적 (Eye Tracking)
+          </button>
+          <button
+            onClick={() => handleInputModeChange("mouse")}
+            disabled={pending}
+            className={`h-12 px-6 rounded-full text-sm font-medium transition-all ${
+              inputMode === "mouse"
+                ? "bg-blue-500 text-white shadow-lg"
+                : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+            }`}
+          >
+            🖱️ 마우스 클릭
+          </button>
+          <button
+            onClick={() => handleInputModeChange("switch")}
+            disabled={pending}
+            className={`h-12 px-6 rounded-full text-sm font-medium transition-all ${
+              inputMode === "switch"
+                ? "bg-blue-500 text-white shadow-lg"
+                : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+            }`}
+          >
+            🔘 스위치 클릭
+          </button>
+        </div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          현재 선택: <span className="font-medium">{inputMode === "eye" ? "시선 추적" : inputMode === "mouse" ? "마우스 클릭" : "스위치 클릭"}</span>
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
         <div className="flex flex-wrap items-center gap-4">

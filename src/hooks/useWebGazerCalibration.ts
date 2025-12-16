@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 /**
@@ -14,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { setCalibrationMode } from "./useWebGazer";
 
 type CalibrationStatus = "idle" | "running" | "completed";
 
@@ -77,6 +77,7 @@ export function useWebGazerCalibration(
   }, []);
 
   const updateAccuracy = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stored = (window as any).webgazer?.getStoredPoints?.();
     if (!stored || !stored.length) {
       setAccuracy(null);
@@ -147,6 +148,7 @@ export function useWebGazerCalibration(
         const allDone = Object.values(pointsRef.current).every((pt) => pt.done);
         if (allDone) {
           setStatus("completed");
+          setCalibrationMode(false); // 캘리브레이션 완료 시 일반 모드로 전환
           const pointCount = Object.keys(pointsRef.current).length;
           const finalAccuracy = updateAccuracy();
           // 정확도 이벤트 전송
@@ -172,6 +174,7 @@ export function useWebGazerCalibration(
     resetPoints();
     setAccuracy(null);
     setStatus("running");
+    setCalibrationMode(true); // 캘리브레이션 모드 활성화
     renderOverlay();
     trackEvent({
       name: "calibration_started",
@@ -183,12 +186,14 @@ export function useWebGazerCalibration(
     resetPoints();
     setAccuracy(null);
     setStatus("idle");
+    setCalibrationMode(false); // 캘리브레이션 모드 비활성화
     destroyOverlay();
   }, [destroyOverlay, resetPoints]);
 
   // Pause WebGazer when the tab is hidden, resume on show.
   useEffect(() => {
     const onVisibilityChange = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wg = (window as any).webgazer;
       if (!wg) return;
       if (document.hidden) {

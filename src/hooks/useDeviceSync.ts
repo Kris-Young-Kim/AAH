@@ -14,6 +14,14 @@ export function useDeviceSync() {
   const removeDevice = useStore((s) => s.removeDevice);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSyncRef = useRef<number>(0);
+  const retryCountRef = useRef<number>(0);
+  const isSubscribedRef = useRef<boolean>(false);
+  const devicesRef = useRef<typeof devices>(devices);
+
+  // devices 변경 시 ref 동기화
+  useEffect(() => {
+    devicesRef.current = devices;
+  }, [devices]);
 
   useEffect(() => {
     if (!isSignedIn || !userId) return;
@@ -61,6 +69,7 @@ export function useDeviceSync() {
 
       if (isMounted && data) {
         setDevices(data);
+        devicesRef.current = data;
         lastSyncRef.current = Date.now();
       }
 
@@ -82,13 +91,29 @@ export function useDeviceSync() {
 
             if (payload.eventType === "DELETE") {
               removeDevice(String(payload.old.id));
+              // ref 업데이트
+              devicesRef.current = devicesRef.current.filter(
+                (d) => d.id !== payload.old.id
+              );
               return;
             }
 
             if (payload.eventType === "UPDATE") {
               updateDeviceState(next.id, next.is_active ?? false);
+              // ref 업데이트
+              devicesRef.current = devicesRef.current.map((d) =>
+                d.id === next.id ? { ...d, ...next } : d
+              );
             } else {
               upsertDevice(next);
+              // ref 업데이트
+              const index = devicesRef.current.findIndex((d) => d.id === next.id);
+              if (index === -1) {
+                devicesRef.current = [next, ...devicesRef.current];
+              } else {
+                devicesRef.current = [...devicesRef.current];
+                devicesRef.current[index] = next;
+              }
             }
           }
         )
@@ -96,20 +121,37 @@ export function useDeviceSync() {
           console.log("[sync] 구독 상태", status);
           if (status === "SUBSCRIBED") {
             lastSyncRef.current = Date.now();
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            console.warn("[sync] 구독 오류, 재구독 시도", status);
-            if (isMounted) {
-              setTimeout(() => {
-                if (isMounted) bootstrap();
-              }, 3000);
+            isSubscribedRef.current = true;
+            retryCountRef.current = 0; // 성공 시 재시도 카운터 리셋
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            isSubscribedRef.current = false;
+            retryCountRef.current += 1;
+            
+            // 최대 5회까지만 재시도
+            if (retryCountRef.current <= 5) {
+              const delay = Math.min(3000 * retryCountRef.current, 30000); // 지수 백오프, 최대 30초
+              console.warn(`[sync] 구독 오류(${status}), ${delay}ms 후 재구독 시도 (${retryCountRef.current}/5)`);
+              if (isMounted) {
+                setTimeout(() => {
+                  if (isMounted && !isSubscribedRef.current) {
+                    bootstrap();
+                  }
+                }, delay);
+              }
+            } else {
+              console.error("[sync] 구독 재시도 한도 초과, 수동 새로고침 필요");
             }
           }
         });
     };
 
-    // 주기적 불일치 검사 (30초마다)
-    const checkMismatch = async () => {
+    bootstrap();
+
+    // 주기적 불일치 검사는 별도 effect로 분리하여 devices 의존성 문제 해결
+    const mismatchInterval = setInterval(async () => {
       if (!isMounted || !currentUserId) return;
+      
+      const currentDevices = devicesRef.current; // ref를 통해 최신 상태 가져오기
       
       const { data } = await supabase
         .from("devices")
@@ -119,42 +161,40 @@ export function useDeviceSync() {
       if (!data) return;
 
       const serverIds = new Set(data.map((d) => d.id));
-      const localIds = new Set(devices.map((d) => d.id));
+      const localIds = new Set(currentDevices.map((d) => d.id));
 
       // 서버에 있지만 로컬에 없는 경우
       const missing = data.filter((d) => !localIds.has(d.id));
       if (missing.length > 0) {
         console.warn("[sync] 불일치 감지: 서버에만 존재", missing);
-        bootstrap();
+        if (isMounted) bootstrap();
         return;
       }
 
       // 로컬에 있지만 서버에 없는 경우
-      const extra = devices.filter((d) => !serverIds.has(d.id));
+      const extra = currentDevices.filter((d) => !serverIds.has(d.id));
       if (extra.length > 0) {
         console.warn("[sync] 불일치 감지: 로컬에만 존재", extra);
-        bootstrap();
+        if (isMounted) bootstrap();
         return;
       }
 
       // 상태 불일치 확인
       const stateMismatch = data.some((server) => {
-        const local = devices.find((d) => d.id === server.id);
+        const local = currentDevices.find((d) => d.id === server.id);
         return local && local.is_active !== server.is_active;
       });
 
       if (stateMismatch) {
         console.warn("[sync] 상태 불일치 감지, 재조회");
-        bootstrap();
+        if (isMounted) bootstrap();
       }
-    };
-
-    bootstrap();
-
-    const mismatchInterval = setInterval(checkMismatch, 30000);
+    }, 30000);
 
     return () => {
       isMounted = false;
+      isSubscribedRef.current = false;
+      retryCountRef.current = 0;
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
       }
@@ -163,6 +203,6 @@ export function useDeviceSync() {
         void supabase.removeChannel(channel);
       }
     };
-  }, [isSignedIn, removeDevice, setDevices, upsertDevice, updateDeviceState, userId, devices]);
+  }, [isSignedIn, removeDevice, setDevices, upsertDevice, updateDeviceState, userId]);
 }
 

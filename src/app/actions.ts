@@ -7,7 +7,7 @@ import type { Database } from "@/database.types";
 
 type SupabaseClient = ReturnType<typeof createServerClient<Database>>;
 
-function getSupabaseServer(): SupabaseClient {
+async function getSupabaseServer(): Promise<SupabaseClient> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -19,14 +19,14 @@ function getSupabaseServer(): SupabaseClient {
     throw new Error("Supabase 환경 변수가 설정되지 않았습니다.");
   }
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   return createServerClient<Database>(supabaseUrl, supabaseKey, {
     cookies: {
-      getAll() {
+      async getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      async setAll(cookiesToSet) {
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
             cookieStore.set(name, value, options)
@@ -50,7 +50,7 @@ export async function syncUser({
   role?: string;
   inputMode?: string;
 }) {
-  const supabase = getSupabaseServer();
+  const supabase = await getSupabaseServer();
 
   console.log("[action] syncUser start", { clerkUserId, role, inputMode });
 
@@ -112,8 +112,56 @@ async function getUserIdByClerkId(
   return data?.id ?? null;
 }
 
+export async function getUserInfo({ clerkUserId }: { clerkUserId: string }) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] getUserInfo", { clerkUserId });
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, role, input_mode")
+    .eq("clerk_user_id", clerkUserId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[action] getUserInfo 실패", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateInputMode({
+  clerkUserId,
+  inputMode,
+}: {
+  clerkUserId: string;
+  inputMode: "eye" | "mouse" | "switch";
+}) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] updateInputMode", { clerkUserId, inputMode });
+
+  const userId = await getUserIdByClerkId(supabase, clerkUserId);
+  if (!userId) {
+    throw new Error("사용자를 찾을 수 없습니다.");
+  }
+
+  const { error } = await supabase
+    .from("users")
+    .update({ input_mode: inputMode })
+    .eq("id", userId);
+
+  if (error) {
+    console.error("[action] updateInputMode 실패", error);
+    throw error;
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/access");
+  console.log("[action] updateInputMode 성공", { userId, inputMode });
+}
+
 export async function listDevices({ clerkUserId }: { clerkUserId: string }) {
-  const supabase = getSupabaseServer();
+  const supabase = await getSupabaseServer();
   console.log("[action] listDevices", { clerkUserId });
 
   const userId = await getUserIdByClerkId(supabase, clerkUserId);
@@ -147,7 +195,7 @@ export async function saveDevice({
   iconType: string;
   position: { x: number; y: number; z: number };
 }) {
-  const supabase = getSupabaseServer();
+  const supabase = await getSupabaseServer();
   console.log("[action] saveDevice start", { clerkUserId, name, iconType, position });
 
   let userId = await getUserIdByClerkId(supabase, clerkUserId);
@@ -181,7 +229,7 @@ export async function toggleDeviceStatus({
   deviceId: string;
   isActive: boolean;
 }) {
-  const supabase = getSupabaseServer();
+  const supabase = await getSupabaseServer();
   console.log("[action] toggleDeviceStatus", { deviceId, isActive });
 
   const { error } = await supabase
@@ -200,7 +248,7 @@ export async function toggleDeviceStatus({
 }
 
 export async function deleteDevice({ deviceId }: { deviceId: string }) {
-  const supabase = getSupabaseServer();
+  const supabase = await getSupabaseServer();
   console.log("[action] deleteDevice", { deviceId });
 
   const { error } = await supabase.from("devices").delete().eq("id", deviceId);
