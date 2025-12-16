@@ -43,7 +43,7 @@ export async function syncUser({
   clerkUserId,
   email,
   role = "user",
-  inputMode = "eye",
+  inputMode = "mouse",
 }: {
   clerkUserId: string;
   email?: string | null;
@@ -261,5 +261,252 @@ export async function deleteDevice({ deviceId }: { deviceId: string }) {
   revalidatePath("/admin");
   revalidatePath("/access");
   console.log("[action] deleteDevice 성공", { deviceId });
+}
+
+// ================================================================
+// 루틴 관련 서버 액션
+// ================================================================
+
+export async function listRoutines({ clerkUserId }: { clerkUserId: string }) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] listRoutines", { clerkUserId });
+
+  const userId = await getUserIdByClerkId(supabase, clerkUserId);
+  if (!userId) {
+    console.warn("[action] listRoutines 사용자 없음", { clerkUserId });
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("routines")
+    .select(
+      `
+      *,
+      routine_devices (
+        id,
+        device_id,
+        target_state,
+        order_index,
+        devices (
+          id,
+          name,
+          icon_type
+        )
+      )
+    `
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[action] listRoutines 실패", error);
+    throw error;
+  }
+
+  console.log("[action] listRoutines 성공", { count: data?.length ?? 0 });
+  return data ?? [];
+}
+
+export async function createRoutine({
+  clerkUserId,
+  name,
+  timeType,
+  devices,
+}: {
+  clerkUserId: string;
+  name: string;
+  timeType: "morning" | "evening" | "custom";
+  devices: Array<{ deviceId: string; targetState: boolean; orderIndex: number }>;
+}) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] createRoutine start", { clerkUserId, name, timeType, deviceCount: devices.length });
+
+  const userId = await getUserIdByClerkId(supabase, clerkUserId);
+  if (!userId) {
+    throw new Error("사용자를 찾을 수 없습니다.");
+  }
+
+  // 루틴 생성
+  const { data: routine, error: routineError } = await supabase
+    .from("routines")
+    .insert({
+      user_id: userId,
+      name,
+      time_type: timeType,
+    })
+    .select("id")
+    .single();
+
+  if (routineError) {
+    console.error("[action] createRoutine 루틴 생성 실패", routineError);
+    throw routineError;
+  }
+
+  // 루틴 기기 추가
+  if (devices.length > 0) {
+    const routineDevices = devices.map((d) => ({
+      routine_id: routine.id,
+      device_id: d.deviceId,
+      target_state: d.targetState,
+      order_index: d.orderIndex,
+    }));
+
+    const { error: devicesError } = await supabase
+      .from("routine_devices")
+      .insert(routineDevices);
+
+    if (devicesError) {
+      console.error("[action] createRoutine 루틴 기기 추가 실패", devicesError);
+      // 루틴은 생성되었지만 기기 추가 실패 시 루틴 삭제
+      await supabase.from("routines").delete().eq("id", routine.id);
+      throw devicesError;
+    }
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/access");
+  console.log("[action] createRoutine success", { routineId: routine.id });
+  return routine.id;
+}
+
+export async function updateRoutine({
+  routineId,
+  name,
+  timeType,
+  devices,
+}: {
+  routineId: string;
+  name?: string;
+  timeType?: "morning" | "evening" | "custom";
+  devices?: Array<{ deviceId: string; targetState: boolean; orderIndex: number }>;
+}) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] updateRoutine start", { routineId, name, timeType, deviceCount: devices?.length ?? 0 });
+
+  // 루틴 정보 업데이트
+  if (name || timeType) {
+    const updateData: { name?: string; time_type?: string } = {};
+    if (name) updateData.name = name;
+    if (timeType) updateData.time_type = timeType;
+
+    const { error } = await supabase
+      .from("routines")
+      .update(updateData)
+      .eq("id", routineId);
+
+    if (error) {
+      console.error("[action] updateRoutine 루틴 업데이트 실패", error);
+      throw error;
+    }
+  }
+
+  // 루틴 기기 업데이트 (기존 기기 삭제 후 재생성)
+  if (devices !== undefined) {
+    // 기존 기기 삭제
+    const { error: deleteError } = await supabase
+      .from("routine_devices")
+      .delete()
+      .eq("routine_id", routineId);
+
+    if (deleteError) {
+      console.error("[action] updateRoutine 기존 기기 삭제 실패", deleteError);
+      throw deleteError;
+    }
+
+    // 새 기기 추가
+    if (devices.length > 0) {
+      const routineDevices = devices.map((d) => ({
+        routine_id: routineId,
+        device_id: d.deviceId,
+        target_state: d.targetState,
+        order_index: d.orderIndex,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("routine_devices")
+        .insert(routineDevices);
+
+      if (insertError) {
+        console.error("[action] updateRoutine 새 기기 추가 실패", insertError);
+        throw insertError;
+      }
+    }
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/access");
+  console.log("[action] updateRoutine success", { routineId });
+}
+
+export async function deleteRoutine({ routineId }: { routineId: string }) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] deleteRoutine", { routineId });
+
+  // CASCADE DELETE로 routine_devices도 자동 삭제됨
+  const { error } = await supabase.from("routines").delete().eq("id", routineId);
+
+  if (error) {
+    console.error("[action] deleteRoutine 실패", error);
+    throw error;
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/access");
+  console.log("[action] deleteRoutine 성공", { routineId });
+}
+
+export async function executeRoutine({ routineId }: { routineId: string }) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] executeRoutine start", { routineId });
+
+  // 루틴의 기기 목록 조회 (순서대로)
+  const { data: routineDevices, error: fetchError } = await supabase
+    .from("routine_devices")
+    .select("device_id, target_state, order_index")
+    .eq("routine_id", routineId)
+    .order("order_index", { ascending: true });
+
+  if (fetchError) {
+    console.error("[action] executeRoutine 루틴 기기 조회 실패", fetchError);
+    throw fetchError;
+  }
+
+  if (!routineDevices || routineDevices.length === 0) {
+    console.warn("[action] executeRoutine 루틴에 기기가 없음", { routineId });
+    return;
+  }
+
+  // 순차적으로 기기 상태 변경
+  for (const rd of routineDevices) {
+    const { error } = await supabase
+      .from("devices")
+      .update({ is_active: rd.target_state })
+      .eq("id", rd.device_id);
+
+    if (error) {
+      console.error("[action] executeRoutine 기기 상태 변경 실패", {
+        deviceId: rd.device_id,
+        targetState: rd.target_state,
+        error,
+      });
+      // 하나라도 실패하면 계속 진행하되 로그만 남김
+    } else {
+      console.log("[action] executeRoutine 기기 상태 변경 성공", {
+        deviceId: rd.device_id,
+        targetState: rd.target_state,
+        orderIndex: rd.order_index,
+      });
+    }
+
+    // 순차 실행을 위한 짧은 지연 (100ms)
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/access");
+  console.log("[action] executeRoutine success", {
+    routineId,
+    deviceCount: routineDevices.length,
+  });
 }
 

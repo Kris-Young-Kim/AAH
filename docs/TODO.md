@@ -24,6 +24,7 @@
   - [x] `users` 테이블: `clerk_user_id` upsert 로직 서버 액션(`syncUser`) 구현, RLS 비활성 전제 확인.
   - [x] `devices` 테이블: 좌표(x,y,z)·상태 필드 구조/인덱스(`idx_devices_user_id`) 확인 완료.
   - [x] SQL 스키마 `docs/AAH.sql` 정리(RLS 비활성 포함). Supabase에 적용 필요 시 해당 스키마 실행.
+  - [x] **루틴 테이블 스키마**: `routines` 테이블(루틴 정보), `routine_devices` 테이블(루틴별 기기 및 실행 순서) 추가. 아침/저녁 루틴 타입 지원. _(마이그레이션 파일 생성 완료: `docs/migrations/create_routines_tables.sql`, Supabase SQL Editor에서 실행 필요)_
 
 - [ ] **서버 액션**
 
@@ -31,6 +32,7 @@
   - [x] `saveDevice(deviceData)`: 보호자 모드 저장 후 `revalidatePath('/admin')`.
   - [x] `toggleDeviceStatus(deviceId, status)`: 상태 토글 후 재검증 및 성공/실패 로깅 추가.
   - [x] 핵심 액션 실행 시 로깅 남기기(요구사항). (`syncUser`, `saveDevice`, `toggleDeviceStatus` 콘솔 로깅 포함)
+  - [x] **루틴 관련 서버 액션**: `listRoutines`, `createRoutine`, `updateRoutine`, `deleteRoutine`, `executeRoutine` (루틴에 포함된 모든 기기를 순차적으로 상태 변경). _(`src/app/actions.ts`에 구현 완료)_
 
 - [ ] **클라이언트 상태 관리**
 
@@ -45,18 +47,21 @@
 - [ ] **보호자 모드(`/admin`)**
 
   - [x] Three.js/R3F 캔버스 + DeviceOrientationControls 적용해 카메라 회전 동기화(`admin` 캔버스).
-  - [x] 중앙 조준점 + “추가” 버튼으로 `camera.getWorldDirection().multiplyScalar(2)` 위치 저장.
+  - [x] 중앙 조준점 + "추가" 버튼으로 `camera.getWorldDirection().multiplyScalar(2)` 위치 저장.
   - [x] 마커 CRUD(추가/삭제/토글) UI 및 서버 액션 연동(이름·아이콘 표시, 삭제 버튼).
   - [x] 웹캠 배경 오버레이 및 센서/카메라 권한 요청 안내 버튼 배치.
+  - [ ] **용어 개선**: "입력 방식 설정" → "사용자가 어떻게 조작할까요?" 등 쉬운 용어로 변경, 각 입력 방식에 대한 설명 추가(눈으로 조작, 마우스로 조작, 스캔 방식).
 
 - [ ] **사용자 모드(`/access`)**
 
-  - [x] iOS 대응: “시작하기” 버튼에서 `DeviceOrientationEvent.requestPermission` 요청.
+  - [x] iOS 대응: "시작하기" 버튼에서 `DeviceOrientationEvent.requestPermission` 요청.
   - [x] 9점 캘리브레이션 오버레이 + 정확도 피드백(`useWebGazerCalibration` 연동).
   - [x] 가상 커서 렌더링 및 스무딩(이동 평균 등) 적용.
   - [x] 마그네틱 스냅: 버튼 히트박스 1.5배, 진입 시 커서 중심 보정.
   - [x] 드웰 클릭: 0~2000ms 진행도 표시 후 토글 실행.
   - [x] 뷰 리셋 버튼으로 카메라 기준 재정렬.
+  - [x] **스캔 모드 UI 개선**: 현재 선택된 기기 강조 표시(하단 고정 UI, 기기 이름/순서 표시), 스캔 속도 조절 기능 추가(1초/2초/3초 선택 가능).
+  - [x] **일상 루틴 기능**: 아침 루틴(불 켜기, 커튼 열기, TV 켜기), 저녁 루틴(불 끄기, 커튼 닫기, TV 끄기) UI 및 실행 기능. 루틴별 기기 그룹화 및 한 번에 실행 기능.
 
 - [x] **실시간 동기화**
 
@@ -74,10 +79,12 @@
   - [x] 주요 액션(로그인 후 sync, 기기 저장/토글, 캘리브레이션 완료) 콘솔/분석 이벤트 기록(`src/lib/analytics.ts` 유틸리티 생성, trackEvent 함수로 통합).
   - [x] 이벤트 스키마 정의: `user_synced`, `device_saved`, `device_toggled`, `device_deleted`, `calibration_started`, `calibration_completed`, `device_clicked` (향후 Google Analytics, PostHog, Vercel Analytics 등으로 확장 가능한 구조).
 
-- [ ] **테스트 계획**
+- [x] **테스트 계획**
 
-  - [ ] 권한 플로우(iOS/Android/desktop) 수동 테스트.
-  - [ ] 캘리브레이션 정확도·스냅·드웰 성공률 시나리오 테스트(문서 TRD/PRD 기준).
+  - [x] 테스트 계획 문서 작성 (`docs/TEST_PLAN.md`): 권한 플로우, 캘리브레이션, 스냅, 드웰, 멀티모달 입력, 환경별 QA, 성능 테스트, 접근성 테스트 시나리오 포함.
+  - [x] 권한 플로우(Desktop Chrome) 자동 테스트 실행 (Chrome DevTools MCP 사용, `docs/TEST_RESULTS.md` 참고).
+  - [ ] 권한 플로우(iOS/Android) 수동 테스트 실행 (브라우저 네이티브 다이얼로그로 인해 수동 필요).
+  - [ ] 캘리브레이션 정확도·스냅·드웰 성공률 시나리오 테스트 실행(문서 TRD/PRD 기준, 웹캠 권한 필요로 수동 테스트).
   - [ ] 저조도/밝은 환경, 정면/누운 자세 등 QA 시나리오 실행.
 
 - [ ] **문서화**

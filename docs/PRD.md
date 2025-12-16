@@ -20,6 +20,10 @@ US-01	보호자	나는 앱에서 방을 비추며 전등 위치에 버튼을 생
 US-02	사용자	나는 내 눈의 움직임만으로 정확하게 버튼을 누르고 싶다.	버튼 위에 시선이 2초 머무르면 클릭 이벤트가 발생하고 시각적 피드백이 제공되어야 함.
 US-03	사용자	나는 시선이 흔들려도 버튼을 쉽게 선택하고 싶다.	커서가 버튼 반경 50px 내에 진입하면 버튼 중앙으로 자석처럼 붙어야 함(Snapping).
 US-04	사용자	나는 조작이 서툴러도 '리셋'을 통해 다시 정면을 보고 싶다.	화면 구석 '중앙 정렬' 버튼을 응시하면 화면 뷰포트가 즉시 초기화되어야 함.
+US-05	보호자	나는 IT 용어 없이 쉽게 사용자의 조작 방식을 설정하고 싶다.	"입력 방식 설정" 대신 "사용자가 어떻게 조작할까요?" 같은 쉬운 문구로 표시되고, 각 방식에 대한 설명이 제공되어야 함.
+US-06	사용자	나는 스캔 방식으로 기기를 선택할 때 속도를 조절하고 싶다.	스캔 속도를 1초/2초/3초 중에서 선택할 수 있어야 하며, 현재 선택된 기기가 명확하게 표시되어야 함.
+US-07	사용자	나는 아침에 일어나서 불을 켜고, 커튼을 열고, TV를 켤 수 있어야 한다.	아침 루틴 버튼을 한 번 누르면 관련된 모든 기기가 순차적으로 켜져야 함.
+US-08	사용자	나는 밤에 잠들기 전에 불을 끄고, 커튼을 닫고, TV를 끌 수 있어야 한다.	저녁 루틴 버튼을 한 번 누르면 관련된 모든 기기가 순차적으로 꺼져야 함.
 3. 상세 기능 요구사항 (Functional Requirements)
 3.1. 인증 및 온보딩 (Auth & Onboarding)
 F-01. 소셜 로그인: Clerk 기반 Google/Kakao 로그인 지원.
@@ -34,6 +38,7 @@ F-05. AR 마커 배치 (Raycasting):
 '추가(+)' 버튼 클릭 시, 현재 바라보는 방향의 구면 좌표계(Spherical Coordinates) 상에 가상 오브젝트 배치.
 데이터 구조: { id, label, icon, yaw, pitch, scale } 저장.
 F-06. 기기 관리 (CRUD): 배치된 마커의 이름 수정, 아이콘 변경, 삭제 기능.
+F-06-1. 입력 방식 설정 UI 개선: "입력 방식 설정" → "사용자가 어떻게 조작할까요?" 등 쉬운 용어 사용, 각 입력 방식(눈으로 조작, 마우스로 조작, 스캔 방식)에 대한 설명 제공.
 3.3. 사용자 모드: 인터랙션 (User: Interaction)
 F-07. 캘리브레이션 (9-Point Calibration):
 화면 9개 지점(3x3 그리드)에 순차적으로 점 표시.
@@ -50,8 +55,13 @@ F-10. 드웰 클릭 (Dwell Click):
 스냅 상태가 유지되는 시간 측정.
 0ms ~ 2000ms: 마커 테두리에 원형 프로그레스 바(Ring UI) 애니메이션.
 2000ms 도달: OnClick 이벤트 트리거 및 성공 사운드 재생.
+F-10-1. 스캔 모드 UI 개선: 현재 선택된 기기를 하단 고정 UI로 강조 표시(기기 이름, 순서 번호), 스캔 속도 조절 기능(1초/2초/3초 선택 가능).
+F-11. 일상 루틴 기능:
+아침 루틴: 불 켜기, 커튼 열기, TV 켜기 등 기기 그룹을 한 번에 실행.
+저녁 루틴: 불 끄기, 커튼 닫기, TV 끄기 등 기기 그룹을 한 번에 실행.
+루틴별 기기 그룹화 및 순차 실행 기능.
 3.4. 시스템 기능 (System)
-F-11. 상태 동기화 (Realtime): Supabase Realtime을 통해 기기 상태(is_active) 변경 시 관리자 화면 및 사용자 화면에 즉시 반영 (색상 변경: Gray -> Yellow).
+F-12. 상태 동기화 (Realtime): Supabase Realtime을 통해 기기 상태(is_active) 변경 시 관리자 화면 및 사용자 화면에 즉시 반영 (색상 변경: Gray -> Yellow).
 4. 데이터 요구사항 (Data Requirements)
 4.1. Schema Design (Supabase)
 Table: devices
@@ -64,6 +74,23 @@ Table: devices
 | yaw | float | - | 가로 회전각 (0 ~ 360) |
 | pitch | float | - | 세로 회전각 (-90 ~ 90) |
 | status | boolean | Default false | On/Off 상태 |
+Table: routines
+| Field | Type | Constraint | Description |
+| :--- | :--- | :--- | :--- |
+| id | uuid | PK | 루틴 고유 ID |
+| user_id | uuid | FK | 사용자 ID (users 테이블 참조) |
+| name | text | Not Null | 루틴 이름 (예: 아침 루틴) |
+| time_type | varchar | Check | 루틴 타입 ('morning', 'evening', 'custom') |
+| created_at | timestamptz | - | 생성 시간 |
+| updated_at | timestamptz | - | 수정 시간 |
+Table: routine_devices
+| Field | Type | Constraint | Description |
+| :--- | :--- | :--- | :--- |
+| id | uuid | PK | 루틴-기기 관계 ID |
+| routine_id | uuid | FK | 루틴 ID (routines 테이블 참조) |
+| device_id | uuid | FK | 기기 ID (devices 테이블 참조) |
+| target_state | boolean | Not Null | 목표 상태 (true: 켜기, false: 끄기) |
+| order_index | integer | Not Null | 실행 순서 |
 4.2. Local Storage
 calibration_data: WebGazer 학습 모델 데이터 (재방문 시 캘리브레이션 단축용).
 5. 비기능 요구사항 (Non-Functional Requirements)

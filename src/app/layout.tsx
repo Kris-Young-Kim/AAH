@@ -16,7 +16,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      // HTTP 431 오류 방지: handshake를 쿠키로만 처리하도록 설정
+      // 쿼리 파라미터로 handshake를 전달하지 않도록 함
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+    >
       <html lang="ko" suppressHydrationWarning>
         <body className="antialiased bg-background text-foreground">
           <Providers>

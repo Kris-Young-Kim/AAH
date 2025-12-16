@@ -29,9 +29,12 @@ Feedback: 버튼이 켜지는 시각/청각 피드백 제공.
 공통	Clerk 인증	소셜 로그인(Google, Kakao) 및 사용자 세션 관리.
 보호자	AR 공간 맵핑	화면 중앙 조준점을 실제 가전에 맞추고 버튼 생성 시 3D 좌표(x,y,z) 저장.
 보호자	기기 관리	기기 아이콘(전등, TV 등) 설정 및 위치 수정/삭제.
+보호자	입력 방식 설정	사용자의 조작 방식을 쉽게 설정(눈으로 조작, 마우스로 조작, 스캔 방식), 각 방식에 대한 설명 제공.
 사용자	시선 캘리브레이션	9개의 점을 따라보며 시선 추적 정확도 향상.
 사용자	스마트 타겟팅	커서가 버튼 근처에 가면 자석처럼 달라붙는(Snap) 보정 기능.
 사용자	상태 동기화	기기 제어 시(On/Off), DB에 즉시 반영되고 UI 색상 변경.
+사용자	스캔 모드 개선	스캔 속도 조절(1초/2초/3초), 현재 선택된 기기 강조 표시.
+사용자	일상 루틴	아침 루틴(불 켜기, 커튼 열기, TV 켜기), 저녁 루틴(불 끄기, 커튼 닫기, TV 끄기) 한 번에 실행.
 8. 데이터베이스 설계 (Database Schema)
 Clerk의 user_id를 핵심키로 사용하여 Supabase와 연동합니다.
 8.1. ERD (Entity Relationship Diagram) 구조
@@ -41,6 +44,9 @@ code
 Mermaid
 erDiagram
     USERS ||--o{ DEVICES : "owns"
+    USERS ||--o{ ROUTINES : "owns"
+    ROUTINES ||--o{ ROUTINE_DEVICES : "contains"
+    DEVICES ||--o{ ROUTINE_DEVICES : "included_in"
     
     USERS {
         uuid id PK "Supabase 내부 ID"
@@ -61,6 +67,23 @@ erDiagram
         float position_z "3D 공간 Z 좌표"
         boolean is_active "On/Off 상태"
         timestamp created_at
+    }
+    
+    ROUTINES {
+        uuid id PK
+        uuid user_id FK "USERS 테이블의 id"
+        string name "루틴 이름 (예: 아침 루틴)"
+        string time_type "morning / evening / custom"
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ROUTINE_DEVICES {
+        uuid id PK
+        uuid routine_id FK "ROUTINES 테이블의 id"
+        uuid device_id FK "DEVICES 테이블의 id"
+        boolean target_state "목표 상태 (true: 켜기, false: 끄기)"
+        integer order_index "실행 순서"
     }
 8.2. 테이블 상세 명세 (SQL DDL)
 개발 시 Supabase SQL Editor에 바로 적용할 수 있는 코드입니다.
@@ -89,9 +112,31 @@ create table public.devices (
   created_at timestamptz default now()
 );
 
--- 3. Indexing (성능 최적화)
+-- 3. Routines Table (일상 루틴)
+create table public.routines (
+  id uuid not null default gen_random_uuid() primary key,
+  user_id uuid not null references public.users(id) on delete cascade,
+  name text not null,
+  time_type text not null check (time_type in ('morning', 'evening', 'custom')),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- 4. Routine Devices Table (루틴별 기기 및 실행 순서)
+create table public.routine_devices (
+  id uuid not null default gen_random_uuid() primary key,
+  routine_id uuid not null references public.routines(id) on delete cascade,
+  device_id uuid not null references public.devices(id) on delete cascade,
+  target_state boolean not null, -- true: 켜기, false: 끄기
+  order_index integer not null, -- 실행 순서
+  unique(routine_id, device_id)
+);
+
+-- 5. Indexing (성능 최적화)
 create index idx_users_clerk_id on public.users(clerk_user_id);
 create index idx_devices_user_id on public.devices(user_id);
+create index idx_routines_user_id on public.routines(user_id);
+create index idx_routine_devices_routine_id on public.routine_devices(routine_id);
 9. 유저 플로우 (User Flow)
 랜딩 페이지부터 제어까지의 흐름을 도식화했습니다.
 code

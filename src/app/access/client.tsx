@@ -2,8 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { SignedIn, SignedOut, SignInButton, useAuth } from "@clerk/nextjs";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  DeviceOrientationControls,
+  Html,
+  Billboard,
+} from "@react-three/drei";
+import { Vector3 } from "three";
 import type { Database } from "@/database.types";
-import { toggleDeviceStatus } from "../actions";
+import { toggleDeviceStatus, listRoutines, executeRoutine } from "../actions";
 import { useStore } from "@/hooks/useStore";
 import { useDeviceSync } from "@/hooks/useDeviceSync";
 import { useWebGazer } from "@/hooks/useWebGazer";
@@ -12,15 +19,39 @@ import { trackEvent } from "@/lib/analytics";
 
 type Device = Database["public"]["Tables"]["devices"]["Row"];
 
+type RoutineDevice = {
+  id: string;
+  device_id: string;
+  target_state: boolean;
+  order_index: number;
+  devices: {
+    id: string;
+    name: string;
+    icon_type: string;
+  } | null;
+};
+
+type Routine = {
+  id: string;
+  user_id: string;
+  name: string;
+  time_type: "morning" | "evening" | "custom";
+  created_at: string;
+  updated_at: string;
+  routine_devices: RoutineDevice[];
+};
+
 type Props = {
   clerkUserId: string;
   initialDevices: Device[];
   inputMode: "eye" | "mouse" | "switch";
+  initialRoutines: Routine[];
 };
 
 export default function AccessClient({
   initialDevices,
   inputMode,
+  initialRoutines,
 }: Props) {
   const { isSignedIn } = useAuth();
   const [pending, startTransition] = useTransition();
@@ -47,8 +78,113 @@ export default function AccessClient({
   }, [inputMode, setInputMode]);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     setDevices(initialDevices);
   }, [initialDevices, setDevices]);
+
+  const [routines, setRoutines] = useState<Routine[]>(initialRoutines);
+  const [executingRoutineId, setExecutingRoutineId] = useState<string | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const handleExecuteRoutine = async (routineId: string) => {
+    setExecutingRoutineId(routineId);
+    startTransition(async () => {
+      try {
+        await executeRoutine({ routineId });
+        trackEvent({ name: "routine_executed", properties: { routineId } });
+        // 루틴 실행 후 기기 상태 동기화를 위해 잠시 대기
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setExecutingRoutineId(null);
+      } catch (error) {
+        console.error("[access] 루틴 실행 실패", error);
+        alert("루틴 실행에 실패했습니다.");
+        setExecutingRoutineId(null);
+      }
+    });
+  };
+
+  // 보안: 카메라 스트림은 클라이언트에서만 사용되며 서버로 전송되지 않습니다.
+  const startVideo = async () => {
+    setVideoError(null);
+    
+    // 기존 스트림이 있으면 먼저 정리
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false,
+      });
+      streamRef.current = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setVideoReady(true);
+        console.log("[access] 웹캠 스트림 시작 (로컬 처리만, 서버 미전송)");
+      }
+    } catch (err: any) {
+      console.error("[access] 웹캠 권한 요청 실패", err);
+      setVideoReady(false);
+      
+      if (err.name === "NotAllowedError") {
+        setVideoError(
+          "웹캠 권한이 거부되었습니다.\n\n" +
+          "해결 방법:\n" +
+          "1. 브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하세요\n" +
+          "2. '카메라' 권한을 '허용'으로 변경하세요\n" +
+          "3. 페이지를 새로고침한 후 다시 시도하세요"
+        );
+      } else if (err.name === "NotFoundError") {
+        setVideoError("카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.");
+      } else if (err.name === "NotReadableError" || err.message?.includes("Device in use") || err.message?.includes("in use")) {
+        setVideoError(
+          "카메라가 다른 애플리케이션에서 사용 중입니다.\n\n" +
+          "해결 방법:\n" +
+          "1. 다른 애플리케이션(예: Zoom, Teams, 다른 브라우저 탭)에서 카메라를 종료하세요\n" +
+          "2. 이 페이지를 새로고침하세요\n" +
+          "3. 다시 'AR 뷰 시작' 버튼을 클릭하세요"
+        );
+      } else if (err.name === "OverconstrainedError") {
+        setVideoError(
+          "요청한 카메라 설정을 지원하지 않습니다.\n\n" +
+          "다른 카메라를 사용하거나 브라우저 설정을 확인해주세요."
+        );
+      } else {
+        setVideoError(
+          `웹캠 권한 요청 실패: ${err.message || err.name}\n\n` +
+          "브라우저 콘솔에서 자세한 오류 정보를 확인할 수 있습니다."
+        );
+      }
+    }
+  };
+
+  // 컴포넌트 언마운트 시 스트림 정리
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const isIOSPermissionRequired =
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof (DeviceOrientationEvent as any).requestPermission === "function";
 
   useEffect(() => {
     if (snappedDeviceId) {
@@ -255,13 +391,15 @@ export default function AccessClient({
 
   // 스위치 모드: 스캔 방식 (순차적으로 하이라이트)
   const [switchIndex, setSwitchIndex] = useState(0);
+  const [scanSpeed, setScanSpeed] = useState<1 | 2 | 3>(2); // 1초/2초/3초 선택 가능
   const switchIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (isSwitchMode && devices.length > 0) {
+      const intervalMs = scanSpeed * 1000; // 스캔 속도에 따라 간격 조정
       switchIntervalRef.current = setInterval(() => {
         setSwitchIndex((prev) => (prev + 1) % devices.length);
-      }, 2000); // 2초마다 다음 기기로 이동
+      }, intervalMs);
       return () => {
         if (switchIntervalRef.current) {
           clearInterval(switchIntervalRef.current);
@@ -272,7 +410,7 @@ export default function AccessClient({
         clearInterval(switchIntervalRef.current);
       }
     }
-  }, [isSwitchMode, devices.length]);
+  }, [isSwitchMode, devices.length, scanSpeed]);
 
   // 스위치 모드: 스페이스바 또는 엔터 키로 선택
   useEffect(() => {
@@ -292,6 +430,15 @@ export default function AccessClient({
       window.removeEventListener("keydown", handleKeyPress);
     };
   }, [isSwitchMode, devices, switchIndex, handleMouseClick]);
+
+  // Hydration 오류 방지: 클라이언트 마운트 후에만 조건부 렌더링
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-body-1">로딩 중...</div>
+      </div>
+    );
+  }
 
   if (!isSignedIn) {
     return (
@@ -349,15 +496,29 @@ export default function AccessClient({
             </>
           )}
           {isSwitchMode && (
-            <button
-              className="h-12 px-6 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:scale-105 active:scale-95 transition-all duration-200"
-              onClick={handleSwitchClick}
-            >
-              🔘 선택 ({devices[switchIndex]?.name || "없음"})
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">스캔 속도:</span>
+                <div className="flex gap-1">
+                  {([1, 2, 3] as const).map((speed) => (
+                    <button
+                      key={speed}
+                      onClick={() => setScanSpeed(speed)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                        scanSpeed === speed
+                          ? "bg-blue-600 text-white shadow-md"
+                          : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                      }`}
+                    >
+                      {speed}초
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
           <div className="px-4 py-2 rounded-lg text-sm bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-medium">
-            입력 방식: {inputMode === "eye" ? "시선 추적" : inputMode === "mouse" ? "마우스 클릭" : "스위치 클릭"}
+            입력 방식: {inputMode === "mouse" ? "마우스 클릭" : inputMode === "switch" ? "스위치 클릭" : "시선 추적"}
           </div>
         </div>
       </div>
@@ -376,6 +537,71 @@ export default function AccessClient({
             닫기
           </button>
         </div>
+      )}
+
+      {/* 일상 루틴 섹션 */}
+      {routines.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-h2 bg-gradient-to-r from-gray-900 to-gray-700 dark:from-gray-100 dark:to-gray-300 bg-clip-text text-transparent">
+            일상 루틴
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            {routines.map((routine) => {
+              const isExecuting = executingRoutineId === routine.id;
+              const isMorning = routine.time_type === "morning";
+              const isEvening = routine.time_type === "evening";
+              return (
+                <div
+                  key={routine.id}
+                  className={`rounded-2xl border p-5 transition-all duration-200 ${
+                    isMorning
+                      ? "bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-950/30 dark:to-orange-950/30 border-yellow-200 dark:border-yellow-800"
+                      : isEvening
+                      ? "bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border-blue-200 dark:border-blue-800"
+                      : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        {isMorning ? "🌅" : isEvening ? "🌙" : "⚙️"} {routine.name}
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        {routine.routine_devices.length}개 기기
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleExecuteRoutine(routine.id)}
+                      disabled={isExecuting || pending}
+                      className={`h-10 px-4 rounded-xl text-sm font-medium transition-all duration-200 ${
+                        isExecuting
+                          ? "bg-gray-400 text-white cursor-not-allowed"
+                          : "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:scale-105 active:scale-95"
+                      }`}
+                    >
+                      {isExecuting ? "실행 중..." : "실행"}
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {routine.routine_devices
+                      .sort((a, b) => a.order_index - b.order_index)
+                      .slice(0, 3)
+                      .map((rd, idx) => (
+                        <div key={rd.id} className="text-xs text-gray-600 dark:text-gray-400">
+                          {idx + 1}. {rd.devices?.name || "알 수 없음"} ({rd.target_state ? "켜기" : "끄기"})
+                        </div>
+                      ))}
+                    {routine.routine_devices.length > 3 && (
+                      <div className="text-xs text-gray-500 dark:text-gray-500">
+                        ... 외 {routine.routine_devices.length - 3}개
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* 시선 추적 모드: 캘리브레이션 섹션 */}
@@ -535,7 +761,88 @@ export default function AccessClient({
           Gaze: ({Math.round(gaze.x)}, {Math.round(gaze.y)})
         </div>
       )}
+
+      {/* 스캔 모드 하단 고정 UI */}
+      {isSwitchMode && devices.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-blue-600 to-blue-500 dark:from-blue-700 dark:to-blue-600 text-white shadow-2xl z-50 border-t-4 border-blue-400 dark:border-blue-500">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/40 shadow-lg">
+                    <span className="text-2xl font-bold">{switchIndex + 1}</span>
+                  </div>
+                  <div>
+                    <div className="text-sm opacity-90">현재 선택된 기기</div>
+                    <div className="text-xl font-bold">{devices[switchIndex]?.name || "없음"}</div>
+                    <div className="text-xs opacity-75 mt-0.5">
+                      {devices[switchIndex]?.icon_type} · {devices[switchIndex]?.is_active ? "On" : "Off"}
+                    </div>
+                  </div>
+                </div>
+                <div className="h-12 w-px bg-white/30" />
+                <div className="text-sm">
+                  <div className="opacity-90">전체 기기</div>
+                  <div className="text-lg font-semibold">
+                    {switchIndex + 1} / {devices.length}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right text-sm">
+                  <div className="opacity-90">스캔 속도</div>
+                  <div className="text-lg font-semibold">{scanSpeed}초</div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (devices.length === 0) return;
+                    const device = devices[switchIndex];
+                    handleMouseClick(device);
+                  }}
+                  className="h-14 px-8 rounded-xl bg-white text-blue-600 font-bold text-lg shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2"
+                >
+                  <span>🔘</span>
+                  <span>선택하기</span>
+                </button>
+                <div className="text-xs opacity-75 text-center">
+                  <div>스페이스바</div>
+                  <div>또는 엔터</div>
+                </div>
+              </div>
+            </div>
+            {/* 진행 바 */}
+            <div className="mt-3 h-1.5 bg-white/20 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-white transition-all duration-300 ease-linear"
+                style={{
+                  width: `${((switchIndex + 1) / devices.length) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function MarkerMesh({ device }: { device: Device }) {
+  const color = device.is_active ? "#22c55e" : "#3b82f6";
+  return (
+    <group position={[device.position_x, device.position_y, device.position_z]}>
+      {/* 빌보드 스프라이트: 항상 카메라를 향해 회전, 가벼운 렌더링으로 FPS 30+ 유지 */}
+      <Billboard>
+        <mesh>
+          <circleGeometry args={[0.1, 16]} />
+          <meshBasicMaterial color={color} />
+        </mesh>
+      </Billboard>
+      <Html distanceFactor={4} position={[0.12, 0.12, 0]}>
+        <div className="rounded-md bg-black/70 text-white px-2 py-1 text-xs shadow-lg whitespace-nowrap">
+          {device.name} · {device.icon_type}
+        </div>
+      </Html>
+    </group>
   );
 }
 
