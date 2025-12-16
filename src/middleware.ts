@@ -7,12 +7,15 @@ export default clerkMiddleware(async (auth, req) => {
   // HTTP 431 오류 방지: handshake 토큰이 쿼리 파라미터로 전달되는 경우 즉시 처리
   // URL 길이 체크 없이 handshake 토큰이 있으면 무조건 제거 (431 오류 예방)
   const url = req.nextUrl.clone();
-  const hasHandshake = url.searchParams.has("__clerk_handshake");
+  // URLSearchParams는 표준 Web API이므로 Promise가 아님
+  const searchParams = new URLSearchParams(url.search);
+  const hasHandshake = searchParams.has("__clerk_handshake");
   
   if (hasHandshake) {
     // handshake 토큰을 쿼리 파라미터에서 제거
     // Clerk는 쿠키를 통해 인증을 처리하므로 쿼리 파라미터가 없어도 작동함
-    url.searchParams.delete("__clerk_handshake");
+    searchParams.delete("__clerk_handshake");
+    url.search = searchParams.toString();
     
     // 무한 리다이렉트 방지: 리다이렉트 헤더에 플래그 추가
     const response = NextResponse.redirect(url);

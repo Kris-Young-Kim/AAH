@@ -155,7 +155,7 @@ export function useDeviceSync() {
       
       const { data } = await supabase
         .from("devices")
-        .select("id, is_active, updated_at")
+        .select("id, is_active")
         .eq("user_id", currentUserId);
 
       if (!data) return;

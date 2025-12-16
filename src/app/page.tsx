@@ -15,9 +15,6 @@ export default function HomePage() {
       <header className="flex justify-between items-center p-6">
         <div className="flex items-center gap-2 text-body-2-bold">
           <span className="text-h2">All-Access Home</span>
-          <span className="px-2 py-1 text-xs rounded-full bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-100">
-            MVP
-          </span>
         </div>
         <div className="flex items-center gap-3">
           <SignedOut>
@@ -50,7 +47,7 @@ export default function HomePage() {
 
         <section className="grid gap-4 sm:grid-cols-2 max-w-4xl">
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 p-5 space-y-3">
-            <h3 className="text-h2">보호자 모드</h3>
+            <h3 className="text-h2">관리자 모드</h3>
             <p className="text-body-2 text-gray-600 dark:text-gray-300">
               카메라를 비추며 기기(전등, TV 등) 위치에 가상 버튼을 배치하세요.
               저장하면 실시간으로 사용자 화면에 반영됩니다.

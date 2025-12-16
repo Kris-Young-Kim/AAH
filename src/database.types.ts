@@ -85,6 +85,80 @@ export interface Database {
           }
         ];
       };
+      routines: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          time_type: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          time_type: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          time_type?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fk_routines_user";
+            columns: ["user_id"];
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      routine_devices: {
+        Row: {
+          id: string;
+          routine_id: string;
+          device_id: string;
+          target_state: boolean;
+          order_index: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          routine_id: string;
+          device_id: string;
+          target_state: boolean;
+          order_index: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          routine_id?: string;
+          device_id?: string;
+          target_state?: boolean;
+          order_index?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fk_routine_devices_routine";
+            columns: ["routine_id"];
+            referencedRelation: "routines";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_routine_devices_device";
+            columns: ["device_id"];
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
     }
     Views: {
       // 타입 생성 후 자동으로 채워집니다

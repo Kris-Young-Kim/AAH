@@ -47,6 +47,7 @@ type Routine = {
 type Props = {
   clerkUserId: string;
   initialDevices: Device[];
+  currentInputMode: "eye" | "mouse" | "switch";
   initialRoutines: Routine[];
 };
 
@@ -342,7 +343,7 @@ export default function AdminClient({
     startTransition(async () => {
       await updateInputMode({ clerkUserId, inputMode: mode });
       setInputMode(mode);
-      trackEvent({ name: "input_mode_changed", properties: { mode } });
+      trackEvent({ name: "input_mode_changed", properties: { inputMode: mode } });
     });
   };
 
@@ -392,12 +393,12 @@ export default function AdminClient({
 
         // 루틴 목록 업데이트
         const updatedRoutines = await listRoutines({ clerkUserId });
-        setRoutines(updatedRoutines ?? []);
+        setRoutines((updatedRoutines ?? []) as Routine[]);
 
         trackEvent({
           name: "routine_created",
           properties: {
-            routineId: newRoutine.id,
+            routineId: newRoutine,
             routineName,
             timeType: routineTimeType,
             deviceCount: selectedDevices.length,
@@ -441,7 +442,7 @@ export default function AdminClient({
 
         // 루틴 목록 업데이트
         const updatedRoutines = await listRoutines({ clerkUserId });
-        setRoutines(updatedRoutines ?? []);
+        setRoutines((updatedRoutines ?? []) as Routine[]);
 
         trackEvent({
           name: "routine_updated",
@@ -493,7 +494,7 @@ export default function AdminClient({
 
         // 루틴 목록 업데이트
         const updatedRoutines = await listRoutines({ clerkUserId });
-        setRoutines(updatedRoutines ?? []);
+        setRoutines((updatedRoutines ?? []) as Routine[]);
 
         trackEvent({
           name: "routine_deleted",
@@ -580,71 +581,103 @@ export default function AdminClient({
           </button>
           <button
             className="h-10 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:shadow-md transition-all duration-200 text-body-2"
-            onClick={() => {
-              if (isIOSPermissionRequired) {
-                (DeviceOrientationEvent as any)
-                  .requestPermission()
-                  .then((res: string) => {
-                    console.log("iOS orientation permission:", res);
-                  })
-                  .catch((err: any) => console.error("권한 요청 실패", err));
+            onClick={async () => {
+              try {
+                // iOS 센서 권한 요청 (필요한 경우)
+                if (isIOSPermissionRequired) {
+                  const orientationResult = await (DeviceOrientationEvent as any).requestPermission();
+                  console.log("[admin] iOS orientation permission:", orientationResult);
+                  
+                  if (orientationResult !== "granted") {
+                    setVideoError("센서 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.");
+                    return;
+                  }
+                }
+                
+                // 웹캠 권한 요청 (사용자 상호작용 컨텍스트에서 직접 호출)
+                await startVideo();
+              } catch (err: any) {
+                console.error("[admin] 권한 요청 실패", err);
+                if (err.name === "NotAllowedError") {
+                  setVideoError("권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.");
+                } else {
+                  setVideoError(`권한 요청 실패: ${err.message || err.name}`);
+                }
               }
-              void startVideo();
             }}
           >
             시작하기(iOS 센서/카메라)
           </button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-[1.2fr_1fr]">
-          <div className="space-y-3">
-            <label className="block">
-              <span className="text-body-2-bold text-gray-900 dark:text-gray-100">
-                기기 이름
-              </span>
-              <input
-                className="mt-2 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                placeholder="예: 거실 전등"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <label className="block">
-              <span className="text-body-2-bold text-gray-900 dark:text-gray-100">
-                아이콘 타입
-              </span>
-              <select
-                className="mt-2 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                value={iconType}
-                onChange={(e) => setIconType(e.target.value as any)}
-              >
-                <option value="light">light</option>
-                <option value="tv">tv</option>
-                <option value="fan">fan</option>
-              </select>
-            </label>
-            <button
-              disabled={pending}
-              onClick={handleAdd}
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white text-body-2 font-bold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
-            >
-              {pending ? "저장 중..." : "현재 방향으로 버튼 추가"}
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-0 overflow-hidden">
-            <div
-              ref={arViewRef}
-              className="relative w-full h-[260px] cursor-crosshair"
-              onClick={handleArViewClick}
-            >
+        <div className="grid gap-4 md:grid-cols-[1fr_2fr]">
+          {/* 좌측: 웹캠 비디오 (촬영한 사진) */}
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-0 overflow-hidden bg-black">
+            <div className="relative w-full h-[360px] md:h-[420px]">
               <video
                 ref={videoRef}
-                className="absolute inset-0 w-full h-full object-cover opacity-60"
+                className="w-full h-full object-cover"
                 autoPlay
                 muted
                 playsInline
               />
+              {!videoReady && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-900/50">
+                  <div className="text-center text-white">
+                    <p className="text-body-2 mb-2">카메라 대기 중...</p>
+                    <p className="text-sm text-gray-300">
+                      &quot;시작하기&quot; 버튼을 눌러주세요
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 우측: 3D 환경 렌더링 (측정된 환경) */}
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-0 overflow-hidden">
+            <div
+              ref={arViewRef}
+              className="relative w-full h-[360px] md:h-[420px] cursor-crosshair"
+              onClick={handleArViewClick}
+            >
+              {/* 플로팅 입력 카드 (화면 내에서 바로 기기 추가 가능) */}
+              <div
+                className="absolute top-3 right-3 z-20 w-[240px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/90 backdrop-blur shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-3 space-y-2">
+                  <div className="text-body-2-bold text-gray-900 dark:text-gray-100">
+                    빠른 기기 추가
+                  </div>
+                  <input
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="예: 거실 전등"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                  <select
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={iconType}
+                    onChange={(e) => setIconType(e.target.value as any)}
+                  >
+                    <option value="light">light</option>
+                    <option value="tv">tv</option>
+                    <option value="fan">fan</option>
+                  </select>
+                  <button
+                    disabled={pending || !name}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAdd();
+                    }}
+                    className="w-full h-10 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-medium shadow-md shadow-blue-500/30 hover:shadow-lg hover:shadow-blue-500/40 transition-all disabled:opacity-50"
+                  >
+                    {pending ? "저장 중..." : "바로 추가"}
+                  </button>
+                </div>
+              </div>
+
               {/* 
                 보안: 카메라 스트림 및 시선 데이터는 클라이언트 메모리 내에서만 처리되며,
                 서버로 전송되지 않습니다. 모든 처리는 로컬에서 수행됩니다.
@@ -1012,13 +1045,13 @@ export default function AdminClient({
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleEditRoutine(routine)}
-                    className="h-8 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                    className="h-8 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-center"
                   >
                     수정
                   </button>
                   <button
                     onClick={() => handleDeleteRoutine(routine.id)}
-                    className="h-8 px-3 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600"
+                    className="h-8 px-3 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 flex items-center justify-center"
                   >
                     삭제
                   </button>

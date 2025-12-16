@@ -19,6 +19,7 @@ export type AnalyticsEvent =
         deviceName: string;
         iconType: string;
         position: { x: number; y: number; z: number };
+        screenPosition?: { x: number; y: number };
       };
     }
   | {
@@ -59,6 +60,36 @@ export type AnalyticsEvent =
       name: "input_mode_changed";
       properties: {
         inputMode: "eye" | "mouse" | "switch";
+      };
+    }
+  | {
+      name: "routine_created";
+      properties: {
+        routineId: string;
+        routineName: string;
+        timeType: "morning" | "evening" | "custom";
+        deviceCount: number;
+      };
+    }
+  | {
+      name: "routine_updated";
+      properties: {
+        routineId: string;
+        routineName: string;
+        timeType: "morning" | "evening" | "custom";
+        deviceCount: number;
+      };
+    }
+  | {
+      name: "routine_deleted";
+      properties: {
+        routineId: string;
+      };
+    }
+  | {
+      name: "routine_executed";
+      properties: {
+        routineId: string;
       };
     };
 

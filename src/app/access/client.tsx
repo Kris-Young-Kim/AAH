@@ -241,8 +241,8 @@ export default function AccessClient({
     
     try {
       // iOS 센서 권한 요청
-      if (typeof DeviceOrientationEvent?.requestPermission === "function") {
-        const orientationResult = await DeviceOrientationEvent.requestPermission();
+      if (typeof (DeviceOrientationEvent as any)?.requestPermission === "function") {
+        const orientationResult = await (DeviceOrientationEvent as any).requestPermission();
         console.log("[access] orientation permission", orientationResult);
         
         if (orientationResult !== "granted") {

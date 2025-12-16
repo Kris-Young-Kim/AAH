@@ -4,7 +4,7 @@
 
 export { 
   Package, 
-  CircleCheck, 
+  CheckCircle2 as CircleCheck, 
   Check,
   // 필요한 아이콘들을 여기에 추가
 } from "lucide-react";
