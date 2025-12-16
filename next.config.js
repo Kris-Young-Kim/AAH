@@ -15,6 +15,18 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
+  // spatiallink-ar 폴더는 별도 프로젝트이므로 빌드에서 제외
+  webpack: (config) => {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: ['**/spatiallink-ar/**', '**/WebGazer-master/**', '**/docs/three.js-master/**'],
+    };
+    return config;
+  },
+  // TypeScript 컴파일에서 제외
+  typescript: {
+    ignoreBuildErrors: false,
+  },
 }
 
 module.exports = nextConfig
