@@ -77,7 +77,6 @@ export function useWebGazerCalibration(
   }, []);
 
   const updateAccuracy = useCallback(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stored = (window as any).webgazer?.getStoredPoints?.();
     if (!stored || !stored.length) {
       setAccuracy(null);
@@ -193,7 +192,6 @@ export function useWebGazerCalibration(
   // Pause WebGazer when the tab is hidden, resume on show.
   useEffect(() => {
     const onVisibilityChange = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wg = (window as any).webgazer;
       if (!wg) return;
       if (document.hidden) {
