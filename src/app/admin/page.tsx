@@ -17,7 +17,7 @@ export default async function AdminPage() {
     <AdminClient
       clerkUserId={user.id}
       initialDevices={devices ?? []}
-      currentInputMode={(userInfo?.input_mode as "eye" | "mouse" | "switch") || "mouse"}
+      currentInputMode={(userInfo?.input_mode as "eye" | "mouse" | "switch" | "voice") || "mouse"}
       initialRoutines={(routines ?? []) as any}
     />
   );

@@ -2,15 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useAuth, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { DeviceOrientationControls, Html, Billboard } from "@react-three/drei";
-import { Vector3 } from "three";
+import { Vector3, Raycaster } from "three";
+import type { Group } from "three";
 import type { Database } from "@/database.types";
 import {
   deleteDevice,
   saveDevice,
   toggleDeviceStatus,
   updateInputMode,
+  updateDevicePosition,
   listRoutines,
   createRoutine,
   updateRoutine,
@@ -47,7 +50,7 @@ type Routine = {
 type Props = {
   clerkUserId: string;
   initialDevices: Device[];
-  currentInputMode: "eye" | "mouse" | "switch";
+  currentInputMode: "eye" | "mouse" | "switch" | "voice";
   initialRoutines: Routine[];
 };
 
@@ -84,7 +87,7 @@ export default function AdminClient({
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [iconType, setIconType] = useState<"light" | "tv" | "fan">("light");
-  const [inputMode, setInputMode] = useState<"eye" | "mouse" | "switch">(
+  const [inputMode, setInputMode] = useState<"eye" | "mouse" | "switch" | "voice">(
     currentInputMode
   );
   const setDevices = useStore((s) => s.setDevices);
@@ -119,6 +122,7 @@ export default function AdminClient({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const arViewRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
 
   useDeviceSync();
 
@@ -268,17 +272,25 @@ export default function AdminClient({
       console.error("[admin] 웹캠 권한 요청 실패", err);
       setVideoReady(false);
 
-      if (err.name === "NotAllowedError") {
+      // 에러 타입별 상세 메시지
+      if (err.name === "NotAllowedError" || err.name === "Permission denied") {
         setVideoError(
           "웹캠 권한이 거부되었습니다.\n\n" +
             "해결 방법:\n" +
-            "1. 브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하세요\n" +
+            "1. 브라우저 주소창 왼쪽의 자물쇠 아이콘(🔒)을 클릭하세요\n" +
             "2. '카메라' 권한을 '허용'으로 변경하세요\n" +
-            "3. 페이지를 새로고침한 후 다시 시도하세요"
+            "3. 페이지를 새로고침(Ctrl+R 또는 F5)한 후 다시 '카메라 시작' 버튼을 클릭하세요\n\n" +
+            "또는 브라우저 설정에서:\n" +
+            "- Chrome: 설정 > 개인정보 및 보안 > 사이트 설정 > 카메라\n" +
+            "- Edge: 설정 > 쿠키 및 사이트 권한 > 카메라"
         );
       } else if (err.name === "NotFoundError") {
         setVideoError(
-          "카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요."
+          "카메라를 찾을 수 없습니다.\n\n" +
+            "해결 방법:\n" +
+            "1. 카메라가 연결되어 있는지 확인하세요\n" +
+            "2. 다른 애플리케이션에서 카메라를 사용 중이 아닌지 확인하세요\n" +
+            "3. 카메라 드라이버가 최신인지 확인하세요"
         );
       } else if (
         err.name === "NotReadableError" ||
@@ -289,8 +301,8 @@ export default function AdminClient({
           "카메라가 다른 애플리케이션에서 사용 중입니다.\n\n" +
             "해결 방법:\n" +
             "1. 다른 애플리케이션(예: Zoom, Teams, 다른 브라우저 탭)에서 카메라를 종료하세요\n" +
-            "2. 이 페이지를 새로고침하세요\n" +
-            "3. 다시 '시작하기' 버튼을 클릭하세요"
+            "2. 이 페이지를 새로고침(Ctrl+R 또는 F5)하세요\n" +
+            "3. 다시 '카메라 시작' 버튼을 클릭하세요"
         );
       } else if (err.name === "OverconstrainedError") {
         setVideoError(
@@ -338,12 +350,46 @@ export default function AdminClient({
     });
   };
 
-  const handleInputModeChange = async (mode: "eye" | "mouse" | "switch") => {
+  const handleToggleAll = (targetState: boolean) => {
+    startTransition(async () => {
+      try {
+        console.log("[admin] 일괄 토글 시작", { targetState, deviceCount: devices.length });
+        
+        // 모든 기기를 순차적으로 토글
+        const promises = devices.map((device) =>
+          toggleDeviceStatus({
+            deviceId: device.id,
+            isActive: targetState,
+          })
+        );
+        
+        await Promise.all(promises);
+        
+        console.log("[admin] 일괄 토글 완료", { targetState, deviceCount: devices.length });
+        
+        trackEvent({
+          name: "device_toggled",
+          properties: {
+            deviceId: "all",
+            deviceName: "일괄 제어",
+            isActive: targetState,
+          },
+        });
+      } catch (error) {
+        console.error("[admin] 일괄 토글 실패", error);
+        alert("일괄 제어에 실패했습니다.");
+      }
+    });
+  };
+
+  const handleInputModeChange = async (mode: "eye" | "mouse" | "switch" | "voice") => {
     if (pending) return;
     startTransition(async () => {
       await updateInputMode({ clerkUserId, inputMode: mode });
       setInputMode(mode);
       trackEvent({ name: "input_mode_changed", properties: { inputMode: mode } });
+      // 사용자 모드 페이지도 새로고침하여 입력 방식 변경 반영
+      router.refresh();
     });
   };
 
@@ -539,15 +585,83 @@ export default function AdminClient({
         <h1 className="text-display-2 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
           관리자 모드
         </h1>
-        <p className="text-body-2 text-gray-600 dark:text-gray-300">
-          카메라를 비추고 조준점에 맞춰 가상 버튼을 추가하세요. (방향벡터 기반
-          2m 앞 위치 저장)
-        </p>
-        <div className="text-body-2 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30 px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900">
-          ⚠️ iOS: 센서 권한을 위해 &quot;시작하기&quot; 버튼(아래 권한 안내)을
-          눌러주세요.
-        </div>
+        {isIOSPermissionRequired && (
+          <div className="text-body-2 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30 px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900">
+            ⚠️ iOS: 센서 권한을 위해 &quot;시작하기&quot; 버튼을 눌러주세요.
+          </div>
+        )}
       </div>
+
+      {/* 입력 방식 선택 섹션 */}
+      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 p-6 space-y-4 shadow-sm">
+        <div>
+          <h2 className="text-h2 mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            입력 방식 설정
+          </h2>
+          <p className="text-body-2 text-gray-600 dark:text-gray-300">
+            사용자가 사용할 입력 방식을 선택하세요. 선택한 방식에 따라 사용자
+            모드의 인터페이스가 변경됩니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => handleInputModeChange("mouse")}
+            disabled={pending}
+            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+              inputMode === "mouse"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+            }`}
+          >
+            🖱️ 마우스 클릭
+          </button>
+          <button
+            onClick={() => handleInputModeChange("switch")}
+            disabled={pending}
+            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+              inputMode === "switch"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+            }`}
+          >
+            🔘 스위치 클릭
+          </button>
+          <button
+            onClick={() => handleInputModeChange("eye")}
+            disabled={pending}
+            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+              inputMode === "eye"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+            }`}
+          >
+            👁️ 시선 추적 (Eye Tracking)
+          </button>
+          <button
+            onClick={() => handleInputModeChange("voice")}
+            disabled={pending}
+            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+              inputMode === "voice"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+            }`}
+          >
+            🎤 음성 인식 (Voice Control)
+          </button>
+        </div>
+        <div className="text-body-2 text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 rounded-lg border border-blue-100 dark:border-blue-900">
+          현재 선택:{" "}
+          <span className="font-bold text-blue-600 dark:text-blue-400">
+            {inputMode === "eye"
+              ? "시선 추적"
+              : inputMode === "mouse"
+              ? "마우스 클릭"
+              : inputMode === "switch"
+              ? "스위치 클릭"
+              : "음성 인식"}
+          </span>
+        </div>
+      </section>
 
       {/* SLAM 기능 섹션 */}
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 p-6 space-y-4 shadow-sm">
@@ -560,29 +674,25 @@ export default function AdminClient({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          <div className="text-body-2 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 font-mono">
-            현재 방향: x {direction.x.toFixed(2)}, y {direction.y.toFixed(2)}, z{" "}
-            {direction.z.toFixed(2)}
-          </div>
           <button
-            className={`h-10 px-4 rounded-xl border transition-all duration-200 text-body-2 ${
-              placingMode
-                ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-950/50 shadow-md"
-                : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+            className={`h-10 px-4 rounded-xl border transition-all duration-200 text-body-2 flex items-center justify-center ${
+              videoReady
+                ? "border-green-400 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-950/50"
+                : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:shadow-md"
             }`}
-            onClick={() => {
-              setPlacingMode(!placingMode);
-              if (!placingMode) {
-                setSelectedPosition(null);
-              }
-            }}
-          >
-            {placingMode ? "배치 모드 종료" : "화면에 버튼 배치"}
-          </button>
-          <button
-            className="h-10 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:shadow-md transition-all duration-200 text-body-2"
             onClick={async () => {
               try {
+                // 카메라가 이미 켜져 있으면 중지
+                if (videoReady && streamRef.current) {
+                  streamRef.current.getTracks().forEach((track) => track.stop());
+                  streamRef.current = null;
+                  if (videoRef.current) {
+                    videoRef.current.srcObject = null;
+                  }
+                  setVideoReady(false);
+                  return;
+                }
+
                 // iOS 센서 권한 요청 (필요한 경우)
                 if (isIOSPermissionRequired) {
                   const orientationResult = await (DeviceOrientationEvent as any).requestPermission();
@@ -598,15 +708,34 @@ export default function AdminClient({
                 await startVideo();
               } catch (err: any) {
                 console.error("[admin] 권한 요청 실패", err);
-                if (err.name === "NotAllowedError") {
-                  setVideoError("권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.");
-                } else {
-                  setVideoError(`권한 요청 실패: ${err.message || err.name}`);
+                // startVideo() 내부에서 이미 에러 메시지를 설정하므로
+                // 여기서는 추가 처리만 수행 (중복 메시지 방지)
+                if (!videoError) {
+                  if (err.name === "NotAllowedError" || err.name === "Permission denied") {
+                    setVideoError("권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.");
+                  } else {
+                    setVideoError(`권한 요청 실패: ${err.message || err.name}`);
+                  }
                 }
               }
             }}
+            >
+            {videoReady ? "카메라 중지" : "카메라 시작"}
+          </button>
+          <button
+            className={`h-10 px-4 rounded-xl border transition-all duration-200 text-body-2 flex items-center justify-center ${
+              placingMode
+                ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-950/50 shadow-md"
+                : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+            }`}
+            onClick={() => {
+              setPlacingMode(!placingMode);
+              if (!placingMode) {
+                setSelectedPosition(null);
+              }
+            }}
           >
-            시작하기(iOS 센서/카메라)
+            {placingMode ? "배치 모드 종료" : "화면에 버튼 배치"}
           </button>
         </div>
 
@@ -626,7 +755,7 @@ export default function AdminClient({
                   <div className="text-center text-white">
                     <p className="text-body-2 mb-2">카메라 대기 중...</p>
                     <p className="text-sm text-gray-300">
-                      &quot;시작하기&quot; 버튼을 눌러주세요
+                      &quot;카메라 시작&quot; 버튼을 눌러주세요
                     </p>
                   </div>
                 </div>
@@ -636,6 +765,15 @@ export default function AdminClient({
 
           {/* 우측: 3D 환경 렌더링 (측정된 환경) */}
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-0 overflow-hidden">
+            {/* 방향 정보 표시 (AR 뷰 위쪽) */}
+            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                카메라 방향 벡터 (3D 좌표)
+              </div>
+              <div className="text-sm text-gray-700 dark:text-gray-300 font-mono">
+                x: {direction.x.toFixed(2)}, y: {direction.y.toFixed(2)}, z: {direction.z.toFixed(2)}
+              </div>
+            </div>
             <div
               ref={arViewRef}
               className="relative w-full h-[360px] md:h-[420px] cursor-crosshair"
@@ -643,7 +781,7 @@ export default function AdminClient({
             >
               {/* 플로팅 입력 카드 (화면 내에서 바로 기기 추가 가능) */}
               <div
-                className="absolute top-3 right-3 z-20 w-[240px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/90 backdrop-blur shadow-lg"
+                className="absolute top-3 right-3 z-20 w-[240px] rounded-xl border border-gray-200/80 dark:border-gray-700/80 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md shadow-lg"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-3 space-y-2">
@@ -697,7 +835,18 @@ export default function AdminClient({
                 </mesh>
                 {/* 마커 렌더링: 빌보드 스프라이트로 FPS 30+ 유지 */}
                 {devices.map((device) => (
-                  <MarkerMesh key={device.id} device={device} />
+                  <MarkerMesh
+                    key={device.id}
+                    device={device}
+                    onPositionChange={(newPosition) => {
+                      startTransition(async () => {
+                        await updateDevicePosition({
+                          deviceId: device.id,
+                          position: newPosition,
+                        });
+                      });
+                    }}
+                  />
                 ))}
                 <axesHelper args={[1]} />
                 <DirectionTracker onDirection={setDirection} />
@@ -791,64 +940,6 @@ export default function AdminClient({
               )}
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* 입력 방식 선택 섹션 */}
-      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 p-6 space-y-4 shadow-sm">
-        <div>
-          <h2 className="text-h2 mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            입력 방식 설정
-          </h2>
-          <p className="text-body-2 text-gray-600 dark:text-gray-300">
-            사용자가 사용할 입력 방식을 선택하세요. 선택한 방식에 따라 사용자
-            모드의 인터페이스가 변경됩니다.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => handleInputModeChange("mouse")}
-            disabled={pending}
-            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
-              inputMode === "mouse"
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
-            }`}
-          >
-            🖱️ 마우스 클릭
-          </button>
-          <button
-            onClick={() => handleInputModeChange("switch")}
-            disabled={pending}
-            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
-              inputMode === "switch"
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
-            }`}
-          >
-            🔘 스위치 클릭
-          </button>
-          <button
-            onClick={() => handleInputModeChange("eye")}
-            disabled={pending}
-            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
-              inputMode === "eye"
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
-            }`}
-          >
-            👁️ 시선 추적 (Eye Tracking)
-          </button>
-        </div>
-        <div className="text-body-2 text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 rounded-lg border border-blue-100 dark:border-blue-900">
-          현재 선택:{" "}
-          <span className="font-bold text-blue-600 dark:text-blue-400">
-            {inputMode === "eye"
-              ? "시선 추적"
-              : inputMode === "mouse"
-              ? "마우스 클릭"
-              : "스위치 클릭"}
-          </span>
         </div>
       </section>
 
@@ -1092,9 +1183,29 @@ export default function AdminClient({
 
       {/* 기기 목록 섹션 */}
       <section className="space-y-4">
-        <h2 className="text-h2 bg-gradient-to-r from-gray-900 to-gray-700 dark:from-gray-100 dark:to-gray-300 bg-clip-text text-transparent">
-          기기 목록
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-h2 bg-gradient-to-r from-gray-900 to-gray-700 dark:from-gray-100 dark:to-gray-300 bg-clip-text text-transparent">
+            기기 목록
+          </h2>
+          {devices.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleToggleAll(true)}
+                disabled={pending}
+                className="h-10 px-4 rounded-xl text-body-2 font-medium transition-all duration-200 flex items-center justify-center bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/40 hover:scale-105 disabled:opacity-50"
+              >
+                전체 켜기
+              </button>
+              <button
+                onClick={() => handleToggleAll(false)}
+                disabled={pending}
+                className="h-10 px-4 rounded-xl text-body-2 font-medium transition-all duration-200 flex items-center justify-center bg-gray-900 dark:bg-gray-950 text-white hover:bg-gray-800 dark:hover:bg-gray-900 shadow-md hover:shadow-lg disabled:opacity-50"
+              >
+                전체 끄기
+              </button>
+            </div>
+          )}
+        </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {devices.map((device) => (
             <div
@@ -1131,18 +1242,13 @@ export default function AdminClient({
                   }`}
                 />
               </div>
-              <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 rounded-lg font-mono">
-                x: {device.position_x.toFixed(2)} / y:{" "}
-                {device.position_y.toFixed(2)} / z:{" "}
-                {device.position_z.toFixed(2)}
-              </div>
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => handleToggle(device)}
-                  className={`flex-1 h-10 px-4 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+                  className={`flex-1 h-10 px-4 rounded-xl text-body-2 font-medium transition-all duration-200 flex items-center justify-center ${
                     device.is_active
-                      ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/40 hover:scale-105"
-                      : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      ? "bg-gray-900 dark:bg-gray-950 text-white hover:bg-gray-800 dark:hover:bg-gray-900 shadow-md hover:shadow-lg"
+                      : "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/40 hover:scale-105"
                   }`}
                   disabled={pending}
                 >
@@ -1169,10 +1275,137 @@ export default function AdminClient({
   );
 }
 
-function MarkerMesh({ device }: { device: Device }) {
+function MarkerMesh({
+  device,
+  onPositionChange,
+}: {
+  device: Device;
+  onPositionChange: (position: { x: number; y: number; z: number }) => void;
+}) {
   const color = device.is_active ? "#22c55e" : "#3b82f6";
+  const [position, setPosition] = useState([
+    device.position_x,
+    device.position_y,
+    device.position_z,
+  ]);
+  const groupRef = useRef<Group>(null);
+  const isDragging = useRef(false);
+  const { camera, gl } = useThree();
+  const raycaster = useRef(new Raycaster());
+  const dragPlane = useRef(new Vector3(0, 0, -2)); // Z축 평면 -2m
+
+  // 기기 위치가 업데이트되면 로컬 상태도 업데이트
+  useEffect(() => {
+    setPosition([device.position_x, device.position_y, device.position_z]);
+    if (groupRef.current) {
+      groupRef.current.position.set(
+        device.position_x,
+        device.position_y,
+        device.position_z
+      );
+    }
+  }, [device.position_x, device.position_y, device.position_z]);
+
+  const handlePointerDown = (e: any) => {
+    e.stopPropagation();
+    isDragging.current = true;
+    document.body.style.cursor = "grabbing";
+  };
+
+  const handlePointerMove = (e: any) => {
+    // 전역 이벤트 리스너에서 처리
+    e.stopPropagation();
+  };
+
+  const handlePointerUp = (e: any) => {
+    if (!isDragging.current) return;
+    e.stopPropagation();
+    isDragging.current = false;
+    document.body.style.cursor = "default";
+
+    // 드래그 종료: 서버에 위치 저장
+    if (groupRef.current) {
+      const newPosition = {
+        x: groupRef.current.position.x,
+        y: groupRef.current.position.y,
+        z: groupRef.current.position.z,
+      };
+      onPositionChange(newPosition);
+    }
+  };
+
+  // 전역 이벤트 리스너 추가
+  useEffect(() => {
+    const handleGlobalMove = (e: MouseEvent) => {
+      if (isDragging.current && groupRef.current) {
+        const rect = gl.domElement.getBoundingClientRect();
+        const mouse = new Vector3(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1,
+          0.5
+        );
+
+        raycaster.current.setFromCamera(mouse, camera);
+        
+        const planeNormal = new Vector3(0, 0, 1);
+        const planePoint = dragPlane.current;
+        const ray = raycaster.current.ray;
+        
+        const denom = planeNormal.dot(ray.direction);
+        if (Math.abs(denom) > 0.0001) {
+          const t = planePoint.clone().sub(ray.origin).dot(planeNormal) / denom;
+          const intersection = ray.origin.clone().add(ray.direction.clone().multiplyScalar(t));
+          
+          groupRef.current.position.copy(intersection);
+          setPosition([intersection.x, intersection.y, intersection.z]);
+        }
+      }
+    };
+
+    const handleGlobalUp = () => {
+      if (isDragging.current) {
+        isDragging.current = false;
+        document.body.style.cursor = "default";
+
+        if (groupRef.current) {
+          const newPosition = {
+            x: groupRef.current.position.x,
+            y: groupRef.current.position.y,
+            z: groupRef.current.position.z,
+          };
+          onPositionChange(newPosition);
+        }
+      }
+    };
+
+    window.addEventListener("mousemove", handleGlobalMove);
+    window.addEventListener("mouseup", handleGlobalUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleGlobalMove);
+      window.removeEventListener("mouseup", handleGlobalUp);
+    };
+  }, [camera, gl, onPositionChange]);
+
   return (
-    <group position={[device.position_x, device.position_y, device.position_z]}>
+    <group
+      ref={groupRef}
+      position={position}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        if (!isDragging.current) {
+          document.body.style.cursor = "grab";
+        }
+      }}
+      onPointerOut={() => {
+        if (!isDragging.current) {
+          document.body.style.cursor = "default";
+        }
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
       {/* 빌보드 스프라이트: 항상 카메라를 향해 회전, 가벼운 렌더링으로 FPS 30+ 유지 */}
       <Billboard>
         <mesh>

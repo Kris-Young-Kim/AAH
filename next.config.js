@@ -19,7 +19,17 @@ const nextConfig = {
   webpack: (config) => {
     config.watchOptions = {
       ...config.watchOptions,
-      ignored: ['**/spatiallink-ar/**', '**/WebGazer-master/**', '**/docs/three.js-master/**'],
+      ignored: [
+        '**/spatiallink-ar/**',
+        '**/WebGazer-master/**',
+        '**/docs/three.js-master/**',
+        // Windows 시스템 파일 제외 (Watchpack 오류 방지)
+        // 참고: 이 파일들은 프로젝트 외부에 있지만 Watchpack이 접근 시도함
+        '**/DumpStack.log.tmp',
+        '**/hiberfil.sys',
+        '**/pagefile.sys',
+        '**/swapfile.sys',
+      ],
     };
     return config;
   },

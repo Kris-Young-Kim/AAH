@@ -32,14 +32,14 @@ CREATE TABLE "users" (
 
     -- 값 제한 규칙 (Check Constraints)
     CONSTRAINT "check_role" CHECK (role IN ('admin', 'user')),
-    CONSTRAINT "check_input_mode" CHECK (input_mode IN ('eye', 'mouse', 'switch', 'touch'))
+    CONSTRAINT "check_input_mode" CHECK (input_mode IN ('eye', 'mouse', 'switch', 'touch', 'voice'))
 );
 
 -- Users 테이블 주석
 COMMENT ON COLUMN "users"."id" IS 'Supabase 내부 고유 ID';
 COMMENT ON COLUMN "users"."clerk_user_id" IS 'Clerk 인증 ID (식별자)';
 COMMENT ON COLUMN "users"."role" IS '역할: admin(보호자), user(사용자)';
-COMMENT ON COLUMN "users"."input_mode" IS '제어 방식: eye, mouse, switch, touch';
+COMMENT ON COLUMN "users"."input_mode" IS '제어 방식: eye, mouse, switch, touch, voice';
 
 -- 4. Devices 테이블 생성
 CREATE TABLE "devices" (

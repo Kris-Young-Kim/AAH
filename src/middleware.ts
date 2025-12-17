@@ -4,44 +4,42 @@ import { NextResponse } from "next/server";
 const isProtectedRoute = createRouteMatcher(["/admin(.*)", "/access(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // HTTP 431 오류 방지: handshake 토큰이 쿼리 파라미터로 전달되는 경우 즉시 처리
-  // URL 길이 체크 없이 handshake 토큰이 있으면 무조건 제거 (431 오류 예방)
   const url = req.nextUrl.clone();
-  // URLSearchParams는 표준 Web API이므로 Promise가 아님
   const searchParams = new URLSearchParams(url.search);
-  const hasHandshake = searchParams.has("__clerk_handshake");
   
-  if (hasHandshake) {
-    // handshake 토큰을 쿼리 파라미터에서 제거
-    // Clerk는 쿠키를 통해 인증을 처리하므로 쿼리 파라미터가 없어도 작동함
-    searchParams.delete("__clerk_handshake");
-    url.search = searchParams.toString();
+  // HTTP 431 오류 방지: URL이 너무 길거나 handshake 토큰이 있으면 처리
+  const urlLength = req.url.length;
+  const hasHandshake = searchParams.has("__clerk_handshake");
+  const MAX_URL_LENGTH = 2000; // 안전한 URL 길이 제한
+  
+  // URL이 너무 길거나 handshake 토큰이 있으면 쿼리 파라미터 제거
+  if (urlLength > MAX_URL_LENGTH || hasHandshake) {
+    // 모든 쿼리 파라미터 제거 (handshake 포함)
+    url.search = "";
     
-    // 무한 리다이렉트 방지: 리다이렉트 헤더에 플래그 추가
-    const response = NextResponse.redirect(url);
-    
-    // 리다이렉트가 이미 발생했는지 확인하기 위한 쿠키 설정
-    // (무한 루프 방지)
+    // 무한 리다이렉트 방지
     const redirectCount = req.cookies.get("__clerk_redirect_count")?.value || "0";
     const count = parseInt(redirectCount, 10);
     
-    if (count < 3) {
-      // 최대 3번까지만 리다이렉트 허용
+    if (count < 2) {
+      // 최대 2번까지만 리다이렉트 허용
+      const response = NextResponse.redirect(url);
       response.cookies.set("__clerk_redirect_count", String(count + 1), {
         httpOnly: true,
-        maxAge: 10, // 10초 후 만료
+        maxAge: 5, // 5초 후 만료
         path: "/",
       });
       return response;
     } else {
       // 리다이렉트가 너무 많이 발생하면 쿠키 삭제하고 루트로 이동
-      response.cookies.delete("__clerk_redirect_count");
       const rootUrl = new URL("/", req.url);
-      return NextResponse.redirect(rootUrl);
+      const response = NextResponse.redirect(rootUrl);
+      response.cookies.delete("__clerk_redirect_count");
+      return response;
     }
   }
 
-  // 리다이렉트 카운터 초기화 (handshake가 없으면 정상 요청)
+  // 리다이렉트 카운터 초기화 (정상 요청)
   if (req.cookies.has("__clerk_redirect_count")) {
     const response = NextResponse.next();
     response.cookies.delete("__clerk_redirect_count");

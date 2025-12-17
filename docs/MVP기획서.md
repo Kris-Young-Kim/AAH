@@ -29,12 +29,13 @@ Feedback: 버튼이 켜지는 시각/청각 피드백 제공.
 공통	Clerk 인증	소셜 로그인(Google, Kakao) 및 사용자 세션 관리.
 보호자	AR 공간 맵핑	화면 중앙 조준점을 실제 가전에 맞추고 버튼 생성 시 3D 좌표(x,y,z) 저장.
 보호자	기기 관리	기기 아이콘(전등, TV 등) 설정 및 위치 수정/삭제.
-보호자	입력 방식 설정	사용자의 조작 방식을 쉽게 설정(눈으로 조작, 마우스로 조작, 스캔 방식), 각 방식에 대한 설명 제공.
+보호자	입력 방식 설정	사용자의 조작 방식을 쉽게 설정(눈으로 조작, 마우스로 조작, 스캔 방식, 음성 인식), 각 방식에 대한 설명 제공.
 사용자	시선 캘리브레이션	9개의 점을 따라보며 시선 추적 정확도 향상.
 사용자	스마트 타겟팅	커서가 버튼 근처에 가면 자석처럼 달라붙는(Snap) 보정 기능.
 사용자	상태 동기화	기기 제어 시(On/Off), DB에 즉시 반영되고 UI 색상 변경.
 사용자	스캔 모드 개선	스캔 속도 조절(1초/2초/3초), 현재 선택된 기기 강조 표시.
 사용자	일상 루틴	아침 루틴(불 켜기, 커튼 열기, TV 켜기), 저녁 루틴(불 끄기, 커튼 닫기, TV 끄기) 한 번에 실행.
+사용자	음성 인식	Web Speech API를 사용한 음성 명령 처리 (예: "거실 전등 켜", "TV 끄기" 등).
 8. 데이터베이스 설계 (Database Schema)
 Clerk의 user_id를 핵심키로 사용하여 Supabase와 연동합니다.
 8.1. ERD (Entity Relationship Diagram) 구조
@@ -53,7 +54,7 @@ erDiagram
         string clerk_user_id UK "Clerk 인증 ID (필수)"
         string email "이메일"
         string role "admin(보호자) / user(사용자)"
-        string input_mode "eye / mouse / switch"
+        string input_mode "eye / mouse / switch / voice"
         timestamp created_at
     }
 

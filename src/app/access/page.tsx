@@ -17,7 +17,7 @@ export default async function AccessPage() {
     <AccessClient
       clerkUserId={user.id}
       initialDevices={devices ?? []}
-      inputMode={(userInfo?.input_mode as "eye" | "mouse" | "switch") || "mouse"}
+      inputMode={(userInfo?.input_mode as "eye" | "mouse" | "switch" | "voice") || "mouse"}
       initialRoutines={(routines ?? []) as any}
     />
   );

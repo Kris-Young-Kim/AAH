@@ -135,7 +135,7 @@ export async function updateInputMode({
   inputMode,
 }: {
   clerkUserId: string;
-  inputMode: "eye" | "mouse" | "switch";
+  inputMode: "eye" | "mouse" | "switch" | "voice";
 }) {
   const supabase = await getSupabaseServer();
   console.log("[action] updateInputMode", { clerkUserId, inputMode });
@@ -245,6 +245,35 @@ export async function toggleDeviceStatus({
   revalidatePath("/admin");
   revalidatePath("/access");
   console.log("[action] toggleDeviceStatus 성공", { deviceId, isActive });
+}
+
+export async function updateDevicePosition({
+  deviceId,
+  position,
+}: {
+  deviceId: string;
+  position: { x: number; y: number; z: number };
+}) {
+  const supabase = await getSupabaseServer();
+  console.log("[action] updateDevicePosition", { deviceId, position });
+
+  const { error } = await supabase
+    .from("devices")
+    .update({
+      position_x: position.x,
+      position_y: position.y,
+      position_z: position.z,
+    })
+    .eq("id", deviceId);
+
+  if (error) {
+    console.error("[action] updateDevicePosition 실패", error);
+    throw error;
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/access");
+  console.log("[action] updateDevicePosition 성공", { deviceId, position });
 }
 
 export async function deleteDevice({ deviceId }: { deviceId: string }) {
