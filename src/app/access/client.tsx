@@ -145,7 +145,7 @@ export default function AccessClient({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const handleExecuteRoutine = async (routineId: string) => {
+  const handleExecuteRoutine = useCallback(async (routineId: string) => {
     if (!userId) {
       console.error("[access] 루틴 실행 실패: 사용자 ID 없음");
       alert("로그인이 필요합니다.");
@@ -174,7 +174,7 @@ export default function AccessClient({
         setExecutingRoutineId(null);
       }
     });
-  };
+  }, [userId, startTransition, setDevices]);
 
   // 보안: 카메라 스트림은 클라이언트에서만 사용되며 서버로 전송되지 않습니다.
   const startVideo = async () => {

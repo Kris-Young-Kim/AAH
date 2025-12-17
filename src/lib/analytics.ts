@@ -53,13 +53,13 @@ export type AnalyticsEvent =
       properties: {
         deviceId: string;
         deviceName: string;
-        method: "dwell" | "manual" | "mouse" | "switch";
+        method: "dwell" | "manual" | "mouse" | "switch" | "voice";
       };
     }
   | {
       name: "input_mode_changed";
       properties: {
-        inputMode: "eye" | "mouse" | "switch";
+        inputMode: "eye" | "mouse" | "switch" | "voice";
       };
     }
   | {

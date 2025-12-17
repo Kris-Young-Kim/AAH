@@ -2,6 +2,31 @@ import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { listDevices, getUserInfo, listRoutines } from "../actions";
 import AdminClient from "./client";
+import type { Database } from "@/database.types";
+
+type Device = Database["public"]["Tables"]["devices"]["Row"];
+
+type RoutineDevice = {
+  id: string;
+  device_id: string;
+  target_state: boolean;
+  order_index: number;
+  devices: {
+    id: string;
+    name: string;
+    icon_type: string;
+  } | null;
+};
+
+type Routine = {
+  id: string;
+  user_id: string;
+  name: string;
+  time_type: "morning" | "evening" | "custom";
+  created_at: string;
+  updated_at: string;
+  routine_devices: RoutineDevice[];
+};
 
 export default async function AdminPage() {
   const user = await currentUser();
@@ -10,7 +35,7 @@ export default async function AdminPage() {
   }
 
   // 모든 데이터베이스 호출을 안전하게 처리
-  let devices = [];
+  let devices: Device[] = [];
   try {
     devices = (await listDevices({ clerkUserId: user.id })) ?? [];
   } catch (error: any) {
@@ -27,9 +52,10 @@ export default async function AdminPage() {
     userInfo = null;
   }
 
-  let routines = [];
+  let routines: Routine[] = [];
   try {
-    routines = (await listRoutines({ clerkUserId: user.id })) ?? [];
+    const routinesData = (await listRoutines({ clerkUserId: user.id })) ?? [];
+    routines = routinesData as Routine[];
   } catch (error: any) {
     console.error("[admin] listRoutines 실패, 빈 배열 사용", error);
     routines = [];
@@ -46,7 +72,7 @@ export default async function AdminPage() {
       clerkUserId={user.id}
       initialDevices={devices}
       currentInputMode={inputMode}
-      initialRoutines={(routines as any) ?? []}
+      initialRoutines={routines}
     />
   );
 }

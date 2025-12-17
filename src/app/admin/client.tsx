@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useAuth, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { DeviceOrientationControls, Html, Billboard } from "@react-three/drei";
-import { Vector3, Raycaster } from "three";
+import { DeviceOrientationControls, OrbitControls, Html, Billboard } from "@react-three/drei";
+import { Vector2, Vector3, Raycaster } from "three";
 import type { Group } from "three";
 import type { Database } from "@/database.types";
 import {
@@ -54,27 +54,146 @@ type Props = {
   initialRoutines: Routine[];
 };
 
+// 8방향 기준점 정의 (정규화된 방향 벡터)
+const SCAN_DIRECTIONS = [
+  { name: "앞", dir: [0, 0, -1], color: "#22c55e" },
+  { name: "뒤", dir: [0, 0, 1], color: "#ef4444" },
+  { name: "좌", dir: [-1, 0, 0], color: "#3b82f6" },
+  { name: "우", dir: [1, 0, 0], color: "#f59e0b" },
+  { name: "위", dir: [0, 1, 0], color: "#8b5cf6" },
+  { name: "아래", dir: [0, -1, 0], color: "#ec4899" },
+  { name: "좌상", dir: [-0.7, 0.7, -0.7], color: "#06b6d4" },
+  { name: "우상", dir: [0.7, 0.7, -0.7], color: "#84cc16" },
+];
+
 function DirectionTracker({
   onDirection,
+  onSensorReady,
+  scanning,
+  scanProgress,
+  onScanProgress,
+  useMouseControls,
+  onUseMouseControls,
 }: {
   onDirection: (dir: { x: number; y: number; z: number }) => void;
+  onSensorReady?: (ready: boolean) => void;
+  scanning?: boolean;
+  scanProgress?: { currentIndex: number; completed: boolean[] };
+  onScanProgress?: (progress: { currentIndex: number; completed: boolean[] }) => void;
+  useMouseControls?: boolean;
+  onUseMouseControls?: (use: boolean) => void;
 }) {
   const { camera } = useThree();
   const dirRef = useRef(new Vector3());
   const frameRef = useRef(0);
+  const controlsRef = useRef<any>(null);
+  const lastDirectionRef = useRef({ x: 0, y: 0, z: -2 });
+  const sensorCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 센서 사용 가능 여부 확인
+  useEffect(() => {
+    if (useMouseControls) return;
+    
+    // DeviceOrientation 이벤트가 발생하는지 확인
+    const checkSensor = () => {
+      let sensorDetected = false;
+      const handler = () => {
+        sensorDetected = true;
+        if (onSensorReady) onSensorReady(true);
+        if (onUseMouseControls) onUseMouseControls(false);
+      };
+      
+      window.addEventListener('deviceorientation', handler, { once: true });
+      
+      // 3초 후에도 센서 이벤트가 없으면 마우스 컨트롤로 전환
+      sensorCheckTimeoutRef.current = setTimeout(() => {
+        if (!sensorDetected) {
+          if (onUseMouseControls) onUseMouseControls(true);
+          if (onSensorReady) onSensorReady(true); // 마우스 컨트롤도 "센서 작동"으로 간주
+        }
+        window.removeEventListener('deviceorientation', handler);
+      }, 3000);
+    };
+    
+    checkSensor();
+    
+    return () => {
+      if (sensorCheckTimeoutRef.current) {
+        clearTimeout(sensorCheckTimeoutRef.current);
+      }
+    };
+  }, [useMouseControls, onSensorReady, onUseMouseControls]);
 
   useFrame(() => {
     const dir = dirRef.current;
     camera.getWorldDirection(dir);
-    dir.multiplyScalar(2); // 2m 앞 포인트
+    dir.normalize(); // 정규화
     frameRef.current += 1;
+    
+    // 센서가 작동하는지 확인 (방향이 변경되면 센서 작동 중)
+    const dirChanged = 
+      Math.abs(dir.x - lastDirectionRef.current.x) > 0.01 ||
+      Math.abs(dir.y - lastDirectionRef.current.y) > 0.01 ||
+      Math.abs(dir.z - lastDirectionRef.current.z) > 0.01;
+    
+    if (dirChanged && onSensorReady) {
+      onSensorReady(true);
+      lastDirectionRef.current = { x: dir.x, y: dir.y, z: dir.z };
+    }
+    
+    // 스캔 모드일 때 방향 체크
+    if (scanning && scanProgress && onScanProgress) {
+      const currentTarget = SCAN_DIRECTIONS[scanProgress.currentIndex];
+      if (currentTarget) {
+        const targetDir = new Vector3(...currentTarget.dir);
+        const angle = dir.angleTo(targetDir);
+        const threshold = Math.PI / 6; // 30도 이내
+        
+        if (angle < threshold && !scanProgress.completed[scanProgress.currentIndex]) {
+          const newCompleted = [...scanProgress.completed];
+          newCompleted[scanProgress.currentIndex] = true;
+          
+          // 다음 방향으로 이동
+          let nextIndex = scanProgress.currentIndex;
+          for (let i = 0; i < SCAN_DIRECTIONS.length; i++) {
+            const checkIndex = (scanProgress.currentIndex + 1 + i) % SCAN_DIRECTIONS.length;
+            if (!newCompleted[checkIndex]) {
+              nextIndex = checkIndex;
+              break;
+            }
+          }
+          
+          onScanProgress({
+            currentIndex: nextIndex,
+            completed: newCompleted,
+          });
+        }
+      }
+    }
+    
+    // 2m 앞 포인트 계산 (방향 표시용)
+    const worldDir = dir.clone().multiplyScalar(2);
+    
     // 너무 자주 setState하지 않도록 6프레임(≈100ms)마다 샘플
     if (frameRef.current % 6 === 0) {
-      onDirection({ x: dir.x, y: dir.y, z: dir.z });
+      onDirection({ x: worldDir.x, y: worldDir.y, z: worldDir.z });
     }
   });
 
-  return <DeviceOrientationControls />;
+  // 마우스 컨트롤 사용 시 OrbitControls, 아니면 DeviceOrientationControls
+  if (useMouseControls) {
+    return (
+      <OrbitControls
+        ref={controlsRef}
+        enableZoom={false}
+        enablePan={false}
+        minPolarAngle={0}
+        maxPolarAngle={Math.PI}
+      />
+    );
+  }
+  
+  return <DeviceOrientationControls ref={controlsRef} />;
 }
 
 export default function AdminClient({
@@ -119,6 +238,16 @@ export default function AdminClient({
     x: number;
     y: number;
   } | null>(null);
+  const [sensorReady, setSensorReady] = useState(false);
+  const [useMouseControls, setUseMouseControls] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{
+    currentIndex: number;
+    completed: boolean[];
+  }>({
+    currentIndex: 0,
+    completed: [false, false, false, false, false, false, false, false],
+  });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const arViewRef = useRef<HTMLDivElement | null>(null);
@@ -762,6 +891,42 @@ export default function AdminClient({
           </button>
           <button
             className={`h-10 px-4 rounded-xl border transition-all duration-200 text-body-2 flex items-center justify-center ${
+              scanning
+                ? "border-purple-400 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/50 shadow-md"
+                : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30"
+            }`}
+            onClick={() => {
+              if (!videoReady) {
+                alert("먼저 카메라를 시작해주세요.");
+                return;
+              }
+              if (!sensorReady) {
+                alert("센서가 작동하지 않습니다. 디바이스를 회전시켜 센서를 활성화해주세요.");
+                return;
+              }
+              
+              if (scanning) {
+                // 스캔 종료
+                setScanning(false);
+                setScanProgress({
+                  currentIndex: 0,
+                  completed: [false, false, false, false, false, false, false, false],
+                });
+              } else {
+                // 스캔 시작
+                setScanning(true);
+                setScanProgress({
+                  currentIndex: 0,
+                  completed: [false, false, false, false, false, false, false, false],
+                });
+              }
+            }}
+            disabled={!videoReady || !sensorReady}
+          >
+            {scanning ? "공간 스캔 종료" : "공간 스캔 시작"}
+          </button>
+          <button
+            className={`h-10 px-4 rounded-xl border transition-all duration-200 text-body-2 flex items-center justify-center ${
               placingMode
                 ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-950/50 shadow-md"
                 : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
@@ -805,12 +970,58 @@ export default function AdminClient({
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-0 overflow-hidden">
             {/* 방향 정보 표시 (AR 뷰 위쪽) */}
             <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                카메라 방향 벡터 (3D 좌표)
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    카메라 방향 벡터 (3D 좌표)
+                  </div>
+                  <div className="text-sm text-gray-700 dark:text-gray-300 font-mono">
+                    x: {direction.x.toFixed(2)}, y: {direction.y.toFixed(2)}, z: {direction.z.toFixed(2)}
+                  </div>
+                </div>
+                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  sensorReady 
+                    ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700"
+                    : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-700"
+                }`}>
+                  {sensorReady ? "✓ 센서 작동 중" : "⚠ 센서 대기 중"}
+                </div>
               </div>
-              <div className="text-sm text-gray-700 dark:text-gray-300 font-mono">
-                x: {direction.x.toFixed(2)}, y: {direction.y.toFixed(2)}, z: {direction.z.toFixed(2)}
-              </div>
+              {!sensorReady && !useMouseControls && (
+                <div className="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
+                  💡 디바이스를 회전시켜보세요. 센서가 작동하면 표시가 변경됩니다.
+                </div>
+              )}
+              {useMouseControls && (
+                <div className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+                  🖱️ 마우스 모드: Canvas를 드래그하여 카메라를 회전시킬 수 있습니다.
+                </div>
+              )}
+              {scanning && (
+                <div className="mt-2">
+                  <div className="text-xs text-purple-600 dark:text-purple-400 font-medium mb-1">
+                    공간 스캔 진행 중: {scanProgress.completed.filter(c => c).length} / 8 방향 완료
+                  </div>
+                  <div className="flex gap-1">
+                    {scanProgress.completed.map((completed, index) => (
+                      <div
+                        key={index}
+                        className={`h-2 flex-1 rounded ${
+                          completed
+                            ? "bg-green-500"
+                            : index === scanProgress.currentIndex
+                            ? "bg-purple-500 animate-pulse"
+                            : "bg-gray-300 dark:bg-gray-600"
+                        }`}
+                        title={SCAN_DIRECTIONS[index].name}
+                      />
+                    ))}
+                  </div>
+                  <div className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                    현재 목표: <strong>{SCAN_DIRECTIONS[scanProgress.currentIndex].name}</strong> 방향을 바라보세요
+                  </div>
+                </div>
+              )}
             </div>
             <div
               ref={arViewRef}
@@ -909,7 +1120,46 @@ export default function AdminClient({
                   />
                 ))}
                 
-                <DirectionTracker onDirection={setDirection} />
+                <DirectionTracker 
+                  onDirection={setDirection} 
+                  onSensorReady={setSensorReady}
+                  scanning={scanning}
+                  scanProgress={scanProgress}
+                  onScanProgress={setScanProgress}
+                  useMouseControls={useMouseControls}
+                  onUseMouseControls={setUseMouseControls}
+                />
+                
+                {/* 스캔 모드: 현재 목표 방향 표시 */}
+                {scanning && (
+                  <mesh position={SCAN_DIRECTIONS[scanProgress.currentIndex].dir.map(d => d * 2) as [number, number, number]}>
+                    <sphereGeometry args={[0.4, 16, 16]} />
+                    <meshStandardMaterial 
+                      color={SCAN_DIRECTIONS[scanProgress.currentIndex].color}
+                      emissive={SCAN_DIRECTIONS[scanProgress.currentIndex].color}
+                      emissiveIntensity={0.8}
+                      metalness={0.3}
+                      roughness={0.2}
+                    />
+                  </mesh>
+                )}
+                
+                {/* 스캔 모드: 완료된 방향 표시 */}
+                {scanning && scanProgress.completed.map((completed, index) => {
+                  if (!completed || index === scanProgress.currentIndex) return null;
+                  return (
+                    <mesh key={index} position={SCAN_DIRECTIONS[index].dir.map(d => d * 2) as [number, number, number]}>
+                      <sphereGeometry args={[0.2, 16, 16]} />
+                      <meshStandardMaterial 
+                        color={SCAN_DIRECTIONS[index].color}
+                        emissive={SCAN_DIRECTIONS[index].color}
+                        emissiveIntensity={0.3}
+                        opacity={0.5}
+                        transparent
+                      />
+                    </mesh>
+                  );
+                })}
               </Canvas>
 
               {/* 배치된 기기 버튼 오버레이 (2D) */}
@@ -984,12 +1234,36 @@ export default function AdminClient({
               </div>
 
               {/* 안내 메시지 */}
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-sm px-3 py-1 rounded-full bg-black/60 text-white">
-                {placingMode
-                  ? selectedPosition
-                    ? "선택된 위치에 기기 이름을 입력하고 추가 버튼을 누르세요"
-                    : "화면을 클릭하여 버튼 위치를 선택하세요"
-                  : "카메라가 바라보는 방향으로 2m 앞 위치를 저장합니다"}
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-sm px-4 py-2 rounded-lg bg-black/70 text-white max-w-md text-center">
+                {scanning ? (
+                  <div className="space-y-1">
+                    <div className="font-medium text-purple-300">
+                      공간 스캔 중: {SCAN_DIRECTIONS[scanProgress.currentIndex].name} 방향
+                    </div>
+                    <div className="text-xs opacity-90">
+                      {SCAN_DIRECTIONS[scanProgress.currentIndex].name} 방향의 큰 구체를 바라보세요
+                      {scanProgress.completed.every(c => c) && (
+                        <div className="mt-1 text-green-400 font-bold">
+                          ✓ 스캔 완료! 이제 기기를 배치할 수 있습니다.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : placingMode ? (
+                  selectedPosition ? (
+                    "선택된 위치에 기기 이름을 입력하고 추가 버튼을 누르세요"
+                  ) : (
+                    "화면을 클릭하여 버튼 위치를 선택하세요"
+                  )
+                ) : (
+                  <div className="space-y-1">
+                    <div className="font-medium">3D 공간 매핑 사용 방법</div>
+                    <div className="text-xs opacity-90">
+                      1. 카메라 시작 → 2. 공간 스캔 시작 (8방향)<br/>
+                      3. 스캔 완료 후 조준점을 맞추고 기기 배치
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 배치 모드 활성화 표시 */}
@@ -1343,10 +1617,10 @@ function MarkerMesh({
   onPositionChange: (position: { x: number; y: number; z: number }) => void;
 }) {
   const color = device.is_active ? "#22c55e" : "#3b82f6";
-  const [position, setPosition] = useState([
-    device.position_x,
-    device.position_y,
-    device.position_z,
+  const [position, setPosition] = useState<[number, number, number]>([
+    device.position_x ?? 0,
+    device.position_y ?? 0,
+    device.position_z ?? -2,
   ]);
   const groupRef = useRef<Group>(null);
   const isDragging = useRef(false);
@@ -1356,7 +1630,7 @@ function MarkerMesh({
 
   // 기기 위치가 업데이트되면 로컬 상태도 업데이트
   useEffect(() => {
-    setPosition([device.position_x, device.position_y, device.position_z]);
+    setPosition([device.position_x ?? 0, device.position_y ?? 0, device.position_z ?? -2] as [number, number, number]);
     if (groupRef.current) {
       groupRef.current.position.set(
         device.position_x,
@@ -1399,10 +1673,9 @@ function MarkerMesh({
     const handleGlobalMove = (e: MouseEvent) => {
       if (isDragging.current && groupRef.current) {
         const rect = gl.domElement.getBoundingClientRect();
-        const mouse = new Vector3(
+        const mouse = new Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
-          -((e.clientY - rect.top) / rect.height) * 2 + 1,
-          0.5
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
         );
 
         raycaster.current.setFromCamera(mouse, camera);
@@ -1417,7 +1690,7 @@ function MarkerMesh({
           const intersection = ray.origin.clone().add(ray.direction.clone().multiplyScalar(t));
           
           groupRef.current.position.copy(intersection);
-          setPosition([intersection.x, intersection.y, intersection.z]);
+          setPosition([intersection.x, intersection.y, intersection.z] as [number, number, number]);
         }
       }
     };

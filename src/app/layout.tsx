@@ -21,9 +21,6 @@ export default function RootLayout({
       // 쿼리 파라미터로 handshake를 전달하지 않도록 함
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
-      // Clock skew 허용: 시스템 시계가 약간 불일치해도 허용 (개발 환경)
-      // 5분(300초)까지 허용
-      clockSkewInMs={300000}
     >
       <html lang="ko" suppressHydrationWarning>
         <body className="antialiased bg-background text-foreground">

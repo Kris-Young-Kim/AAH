@@ -83,6 +83,34 @@ export default function SwitchClient({
     }
   }, [scanItems.length, scanSpeed]);
 
+  const handleDeviceClick = useCallback((device: Device) => {
+    startTransition(async () => {
+      await toggleDeviceStatus({
+        deviceId: device.id,
+        isActive: !device.is_active,
+      });
+    });
+  }, [startTransition]);
+
+  const handleExecuteRoutine = useCallback(async (routineId: string) => {
+    if (!userId) return;
+    setExecutingRoutineId(routineId);
+    startTransition(async () => {
+      try {
+        await executeRoutine({ routineId });
+        const updatedDevices = await listDevices({ clerkUserId });
+        if (updatedDevices) {
+          setDevices(updatedDevices);
+        }
+      } catch (error) {
+        console.error("[switch] 루틴 실행 실패", error);
+        alert("루틴 실행에 실패했습니다.");
+      } finally {
+        setExecutingRoutineId(null);
+      }
+    });
+  }, [userId, clerkUserId, startTransition, setDevices]);
+
   // 스페이스바 또는 엔터 키로 선택
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -102,35 +130,7 @@ export default function SwitchClient({
     return () => {
       window.removeEventListener("keydown", handleKeyPress);
     };
-  }, [scanItems, switchIndex]);
-
-  const handleDeviceClick = useCallback((device: Device) => {
-    startTransition(async () => {
-      await toggleDeviceStatus({
-        deviceId: device.id,
-        isActive: !device.is_active,
-      });
-    });
-  }, [startTransition]);
-
-  const handleExecuteRoutine = async (routineId: string) => {
-    if (!userId) return;
-    setExecutingRoutineId(routineId);
-    startTransition(async () => {
-      try {
-        await executeRoutine({ routineId });
-        const updatedDevices = await listDevices({ clerkUserId });
-        if (updatedDevices) {
-          setDevices(updatedDevices);
-        }
-      } catch (error) {
-        console.error("[switch] 루틴 실행 실패", error);
-        alert("루틴 실행에 실패했습니다.");
-      } finally {
-        setExecutingRoutineId(null);
-      }
-    });
-  };
+  }, [scanItems, switchIndex, handleDeviceClick, handleExecuteRoutine]);
 
   const handleRoutineUpdate = async () => {
     if (!userId) return;

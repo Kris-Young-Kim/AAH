@@ -14,7 +14,7 @@ type StoreState = {
   snappedDeviceId: string | null;
   dwellProgressMs: number;
   sensorReady: boolean;
-  inputMode: "eye" | "mouse" | "switch";
+  inputMode: "eye" | "mouse" | "switch" | "voice";
   calibrationStep: number;
   setDevices: (devices: Device[]) => void;
   upsertDevice: (device: Device) => void;
@@ -24,7 +24,7 @@ type StoreState = {
   setSnappedDevice: (id: string | null) => void;
   setDwellProgress: (ms: number) => void;
   setSensorReady: (ready: boolean) => void;
-  setInputMode: (mode: "eye" | "mouse" | "switch") => void;
+  setInputMode: (mode: "eye" | "mouse" | "switch" | "voice") => void;
   setCalibrationStep: (step: number) => void;
   /**
    * 고빈도 시선 업데이트용: React 렌더 최소화를 위해 replace=false로 상태만 갱신.
