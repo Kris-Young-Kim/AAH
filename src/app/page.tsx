@@ -37,11 +37,10 @@ export default function HomePage() {
 
       <main className="flex-1 px-6 md:px-10 pb-10 flex flex-col gap-8">
         <section className="max-w-3xl space-y-3">
-          <h1 className="text-display-2">공간을 읽고, 시선으로 켜다.</h1>
+          <h1 className="text-display-2">공간을 읽고, 당신의 자립을 켜다</h1>
           <p className="text-body-1 text-gray-600 dark:text-gray-300">
-            웹캠과 센서만으로 가전을 제어하는 All-Access Home MVP입니다.
-            보호자(Admin)는 버튼을 배치하고, 사용자(User)는 시선·멀티모달로
-            실행합니다.
+            고가의 장비 없이 웹캠과 센서만으로 가전을 제어하는 보조공학 플랫폼입니다.
+            보호자가 버튼을 배치하면, 사용자는 시선, 마우스, 스위치, 음성 등 자신에게 맞는 방법으로 제어할 수 있습니다.
           </p>
         </section>
 
@@ -63,8 +62,8 @@ export default function HomePage() {
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 p-5 space-y-3">
             <h3 className="text-h2">사용자 모드</h3>
             <p className="text-body-2 text-gray-600 dark:text-gray-300">
-              9점 캘리브레이션 후 시선·마우스·스위치로 버튼을 바라보고 2초
-              머무르면 실행됩니다.
+              공간에 배치된 버튼을 시선, 마우스, 스위치, 음성 등 자신에게 맞는 방법으로 제어합니다.
+              간단한 설정만으로 시작할 수 있습니다.
             </p>
             <Link
               href="/access"

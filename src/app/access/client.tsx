@@ -301,6 +301,12 @@ export default function AccessClient({
     [dwellProgressMs, dwellTime]
   );
 
+  // 입력 방식에 따른 처리
+  const isEyeMode = inputMode === "eye";
+  const isMouseMode = inputMode === "mouse";
+  const isSwitchMode = inputMode === "switch";
+  const isVoiceMode = inputMode === "voice";
+
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   const requestSensorPermission = async () => {
@@ -403,8 +409,10 @@ export default function AccessClient({
     setDwellProgress(0);
   };
 
-  // 가상 커서 + 마그네틱 스냅 (히트박스 1.5배)
+  // 가상 커서 + 마그네틱 스냅 (히트박스 강화: 3배 확대)
   useEffect(() => {
+    if (!isEyeMode || !sensorReady) return;
+    
     let rafId: number;
     const loop = () => {
       let nextSnap: string | null = null;
@@ -412,14 +420,16 @@ export default function AccessClient({
         const el = cardRefs.current[device.id];
         if (!el) return;
         const rect = el.getBoundingClientRect();
-        const expandedWidth = rect.width * 1.5;
-        const expandedHeight = rect.height * 1.5;
+        // 히트박스 3배 확대 (1.5배 → 3배)
+        const expandedWidth = rect.width * 3;
+        const expandedHeight = rect.height * 3;
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
         const left = cx - expandedWidth / 2;
         const top = cy - expandedHeight / 2;
         const right = cx + expandedWidth / 2;
         const bottom = cy + expandedHeight / 2;
+        // 확대된 히트박스 내부에 있으면 스냅
         if (gaze.x >= left && gaze.x <= right && gaze.y >= top && gaze.y <= bottom) {
           nextSnap = device.id;
         }
@@ -431,13 +441,7 @@ export default function AccessClient({
     };
     rafId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafId);
-  }, [devices, gaze.x, gaze.y, setSnappedDevice, snappedDeviceId]);
-
-  // 입력 방식에 따른 처리
-  const isEyeMode = inputMode === "eye";
-  const isMouseMode = inputMode === "mouse";
-  const isSwitchMode = inputMode === "switch";
-  const isVoiceMode = inputMode === "voice";
+  }, [devices, gaze.x, gaze.y, setSnappedDevice, snappedDeviceId, isEyeMode, sensorReady]);
 
   // 마우스 모드: 직접 클릭으로 기기 제어
   const handleMouseClick = useCallback((device: Device) => {
@@ -813,9 +817,9 @@ export default function AccessClient({
       {isEyeMode && (
         <section className="relative rounded-2xl border border-gray-200 dark:border-gray-800 p-6 min-h-[320px] overflow-hidden">
           <div className="space-y-3">
-            <h2 className="text-h2">9점 캘리브레이션</h2>
+            <h2 className="text-h2">간단 캘리브레이션</h2>
             <p className="text-body-2 text-gray-600 dark:text-gray-300">
-              &quot;캘리브레이션 시작&quot;을 눌러 9점 오버레이를 완료하면 정확도 피드백이 표시됩니다.
+              &quot;캘리브레이션 시작&quot;을 눌러 5개의 점을 각각 한 번씩 클릭하면 완료됩니다. 간단하게 설정할 수 있습니다.
             </p>
             <button
               onClick={() => startCalibration()}

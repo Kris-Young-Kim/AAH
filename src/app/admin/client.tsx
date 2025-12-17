@@ -585,9 +585,10 @@ export default function AdminClient({
         <h1 className="text-display-2 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
           관리자 모드
         </h1>
+        {/* iOS 지원: 추후 개발 예정 */}
         {isIOSPermissionRequired && (
-          <div className="text-body-2 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30 px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900">
-            ⚠️ iOS: 센서 권한을 위해 &quot;시작하기&quot; 버튼을 눌러주세요.
+          <div className="text-body-2 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 rounded-lg border border-blue-200 dark:border-blue-900">
+            ℹ️ iOS 지원은 추후 개발 예정입니다. 현재는 안드로이드 기기에서 최적화되어 있습니다.
           </div>
         )}
       </div>
@@ -596,57 +597,88 @@ export default function AdminClient({
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 p-6 space-y-4 shadow-sm">
         <div>
           <h2 className="text-h2 mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            입력 방식 설정
+            사용자가 어떻게 조작할까요?
           </h2>
           <p className="text-body-2 text-gray-600 dark:text-gray-300">
-            사용자가 사용할 입력 방식을 선택하세요. 선택한 방식에 따라 사용자
-            모드의 인터페이스가 변경됩니다.
+            사용자의 상황에 맞는 조작 방식을 선택해주세요. 각 방식에 대한 설명을 확인하신 후 선택하시면 됩니다.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <button
             onClick={() => handleInputModeChange("mouse")}
             disabled={pending}
-            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+            className={`h-auto p-4 rounded-xl text-left transition-all duration-200 ${
               inputMode === "mouse"
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.01]"
             }`}
           >
-            🖱️ 마우스 클릭
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">🖱️</span>
+              <div className="flex-1">
+                <div className="text-body-1 font-semibold mb-1">직접 선택</div>
+                <div className={`text-sm ${inputMode === "mouse" ? "text-blue-50" : "text-gray-600 dark:text-gray-400"}`}>
+                  마우스, 트랙패드, 터치스크린을 사용하여 화면의 버튼을 직접 클릭합니다. 가장 기본적인 조작 방식입니다.
+                </div>
+              </div>
+            </div>
           </button>
           <button
             onClick={() => handleInputModeChange("switch")}
             disabled={pending}
-            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+            className={`h-auto p-4 rounded-xl text-left transition-all duration-200 ${
               inputMode === "switch"
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.01]"
             }`}
           >
-            🔘 스위치 클릭
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">🔘</span>
+              <div className="flex-1">
+                <div className="text-body-1 font-semibold mb-1">스캐닝 모드</div>
+                <div className={`text-sm ${inputMode === "switch" ? "text-blue-50" : "text-gray-600 dark:text-gray-400"}`}>
+                  스위치나 키보드로 버튼을 순차적으로 선택합니다. 버튼이 자동으로 하이라이트되며 스페이스바나 엔터로 선택합니다.
+                </div>
+              </div>
+            </div>
           </button>
           <button
             onClick={() => handleInputModeChange("eye")}
             disabled={pending}
-            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+            className={`h-auto p-4 rounded-xl text-left transition-all duration-200 ${
               inputMode === "eye"
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.01]"
             }`}
           >
-            👁️ 시선 추적 (Eye Tracking)
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">👁️</span>
+              <div className="flex-1">
+                <div className="text-body-1 font-semibold mb-1">눈으로 조작</div>
+                <div className={`text-sm ${inputMode === "eye" ? "text-blue-50" : "text-gray-600 dark:text-gray-400"}`}>
+                  웹캠으로 눈의 움직임을 추적하여 화면의 버튼을 제어합니다. 버튼을 일정 시간 응시하면 자동으로 실행됩니다.
+                </div>
+              </div>
+            </div>
           </button>
           <button
             onClick={() => handleInputModeChange("voice")}
             disabled={pending}
-            className={`h-12 px-6 rounded-xl text-body-2 font-medium transition-all duration-200 ${
+            className={`h-auto p-4 rounded-xl text-left transition-all duration-200 ${
               inputMode === "voice"
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.02]"
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md hover:scale-[1.01]"
             }`}
           >
-            🎤 음성 인식 (Voice Control)
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">🎤</span>
+              <div className="flex-1">
+                <div className="text-body-1 font-semibold mb-1">음성 인식</div>
+                <div className={`text-sm ${inputMode === "voice" ? "text-blue-50" : "text-gray-600 dark:text-gray-400"}`}>
+                  음성 명령으로 기기를 제어합니다. 예: &quot;거실 전등 켜&quot;, &quot;TV 끄기&quot; 등으로 말하면 자동으로 실행됩니다.
+                </div>
+              </div>
+            </div>
           </button>
         </div>
         <div className="text-body-2 text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 rounded-lg border border-blue-100 dark:border-blue-900">
@@ -655,9 +687,9 @@ export default function AdminClient({
             {inputMode === "eye"
               ? "시선 추적"
               : inputMode === "mouse"
-              ? "마우스 클릭"
+              ? "직접 선택"
               : inputMode === "switch"
-              ? "스위치 클릭"
+              ? "스캐닝 모드"
               : "음성 인식"}
           </span>
         </div>
@@ -667,10 +699,10 @@ export default function AdminClient({
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 p-6 space-y-4 shadow-sm">
         <div>
           <h2 className="text-h2 mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            SLAM 공간 인식
+            3D 공간 매핑
           </h2>
           <p className="text-body-2 text-gray-600 dark:text-gray-300">
-            카메라를 비추고 조준점에 맞춰 가상 버튼을 추가하세요. (방향벡터 기반 2m 앞 위치 저장)
+            카메라를 비추고 조준점에 맞춰 가상 버튼을 추가하세요. 디바이스 회전에 따라 버튼이 공간에 고정됩니다. (방향벡터 기반 2m 앞 위치 저장)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -693,14 +725,20 @@ export default function AdminClient({
                   return;
                 }
 
-                // iOS 센서 권한 요청 (필요한 경우)
+                // iOS 센서 권한 요청 (추후 개발용 - 현재는 안드로이드 중심)
+                // TODO: iOS 지원 시 활성화
                 if (isIOSPermissionRequired) {
-                  const orientationResult = await (DeviceOrientationEvent as any).requestPermission();
-                  console.log("[admin] iOS orientation permission:", orientationResult);
-                  
-                  if (orientationResult !== "granted") {
-                    setVideoError("센서 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.");
-                    return;
+                  try {
+                    const orientationResult = await (DeviceOrientationEvent as any).requestPermission();
+                    console.log("[admin] iOS orientation permission:", orientationResult);
+                    
+                    if (orientationResult !== "granted") {
+                      setVideoError("iOS 센서 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요. (iOS 지원은 추후 개발 예정)");
+                      return;
+                    }
+                  } catch (err) {
+                    console.warn("[admin] iOS 권한 요청 실패 (추후 개발 예정):", err);
+                    // iOS 지원이 완료되지 않았으므로 경고만 표시하고 계속 진행
                   }
                 }
                 
@@ -825,14 +863,36 @@ export default function AdminClient({
                 frameloop="always"
                 dpr={[1, 2]}
                 performance={{ min: 0.5 }}
+                style={{ background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' }}
               >
-                <ambientLight intensity={0.8} />
-                <directionalLight position={[2, 2, 2]} intensity={0.6} />
-                {/* 방향 참조 박스 */}
-                <mesh position={[0, 0, -2]}>
-                  <boxGeometry args={[0.2, 0.2, 0.2]} />
-                  <meshStandardMaterial color="#22c55e" />
+                <ambientLight intensity={0.6} />
+                <directionalLight position={[2, 2, 2]} intensity={0.8} />
+                <pointLight position={[0, 0, 0]} intensity={0.5} />
+                
+                {/* 참조 그리드 (3D 공간 시각화) */}
+                <gridHelper args={[10, 10, "#4a5568", "#2d3748"]} />
+                
+                {/* 축 표시 */}
+                <axesHelper args={[2]} />
+                
+                {/* 원점 표시 */}
+                <mesh position={[0, 0, 0]}>
+                  <sphereGeometry args={[0.1, 16, 16]} />
+                  <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.5} />
                 </mesh>
+                
+                {/* 방향 참조 박스 (카메라가 바라보는 방향 2m 앞) */}
+                <mesh position={[0, 0, -2]}>
+                  <boxGeometry args={[0.3, 0.3, 0.3]} />
+                  <meshStandardMaterial 
+                    color="#22c55e" 
+                    emissive="#22c55e" 
+                    emissiveIntensity={0.3}
+                    metalness={0.5}
+                    roughness={0.3}
+                  />
+                </mesh>
+                
                 {/* 마커 렌더링: 빌보드 스프라이트로 FPS 30+ 유지 */}
                 {devices.map((device) => (
                   <MarkerMesh
@@ -848,7 +908,7 @@ export default function AdminClient({
                     }}
                   />
                 ))}
-                <axesHelper args={[1]} />
+                
                 <DirectionTracker onDirection={setDirection} />
               </Canvas>
 

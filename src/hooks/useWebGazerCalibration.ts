@@ -33,7 +33,7 @@ interface UseWebGazerCalibrationOptions {
 export function useWebGazerCalibration(
   options: UseWebGazerCalibrationOptions = {}
 ) {
-  const { requiredClicks = 5, containerId = "webgazer-calibration-overlay" } =
+  const { requiredClicks = 1, containerId = "webgazer-calibration-overlay" } =
     options;
 
   const [status, setStatus] = useState<CalibrationStatus>("idle");
@@ -43,16 +43,13 @@ export function useWebGazerCalibration(
   const requiredRef = useRef(requiredClicks);
 
   const basePoints = useMemo<CalibrationPoint[]>(() => {
+    // 간단한 5점 캘리브레이션 (중앙 + 4개 모서리)
     const positions = [
-      { x: 15, y: 15 },
-      { x: 50, y: 15 },
-      { x: 85, y: 15 },
-      { x: 15, y: 50 },
-      { x: 50, y: 50 },
-      { x: 85, y: 50 },
-      { x: 15, y: 85 },
-      { x: 50, y: 85 },
-      { x: 85, y: 85 },
+      { x: 50, y: 50 },   // 중앙
+      { x: 20, y: 20 },   // 좌상
+      { x: 80, y: 20 },   // 우상
+      { x: 20, y: 80 },   // 좌하
+      { x: 80, y: 80 },   // 우하
     ];
     return positions.map((p, idx) => ({
       id: `pt${idx + 1}`,

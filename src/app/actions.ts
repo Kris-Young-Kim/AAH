@@ -52,7 +52,13 @@ export async function syncUser({
 }) {
   const supabase = await getSupabaseServer();
 
-  console.log("[action] syncUser start", { clerkUserId, role, inputMode });
+  // inputMode 값 검증 및 기본값 설정
+  const validInputModes = ["eye", "mouse", "switch", "voice"] as const;
+  const validatedInputMode = inputMode && validInputModes.includes(inputMode as any)
+    ? inputMode
+    : "mouse";
+
+  console.log("[action] syncUser start", { clerkUserId, role, inputMode: validatedInputMode });
 
   const { data: existing } = await supabase
     .from("users")
@@ -63,11 +69,25 @@ export async function syncUser({
   if (existing?.id) {
     const { error } = await supabase
       .from("users")
-      .update({ email, role, input_mode: inputMode })
+      .update({ email, role, input_mode: validatedInputMode })
       .eq("id", existing.id);
 
     if (error) {
       console.error("[action] syncUser update 실패", error);
+      // CHECK constraint 위반 시 기본값으로 재시도
+      if (error.code === "23514") {
+        console.warn("[action] syncUser CHECK constraint 위반, 기본값으로 재시도");
+        const { error: retryError } = await supabase
+          .from("users")
+          .update({ email, role, input_mode: "mouse" })
+          .eq("id", existing.id);
+        if (retryError) {
+          console.error("[action] syncUser 재시도 실패", retryError);
+          throw retryError;
+        }
+        console.log("[action] syncUser updated (기본값 사용)", { id: existing.id });
+        return existing.id;
+      }
       throw error;
     }
 
@@ -81,13 +101,33 @@ export async function syncUser({
       clerk_user_id: clerkUserId,
       email: email ?? null,
       role,
-      input_mode: inputMode,
+      input_mode: validatedInputMode,
     })
     .select("id")
     .single();
 
   if (error) {
     console.error("[action] syncUser insert 실패", error);
+    // CHECK constraint 위반 시 기본값으로 재시도
+    if (error.code === "23514") {
+      console.warn("[action] syncUser CHECK constraint 위반, 기본값으로 재시도");
+      const { data: retryData, error: retryError } = await supabase
+        .from("users")
+        .insert({
+          clerk_user_id: clerkUserId,
+          email: email ?? null,
+          role,
+          input_mode: "mouse",
+        })
+        .select("id")
+        .single();
+      if (retryError) {
+        console.error("[action] syncUser 재시도 실패", retryError);
+        throw retryError;
+      }
+      console.log("[action] syncUser created (기본값 사용)", { id: retryData.id });
+      return retryData.id;
+    }
     throw error;
   }
 
@@ -107,6 +147,11 @@ async function getUserIdByClerkId(
 
   if (error) {
     console.error("[action] 사용자 조회 실패", error);
+    // CHECK constraint 위반은 무시하고 null 반환 (syncUser에서 처리)
+    if (error.code === "23514") {
+      console.warn("[action] getUserIdByClerkId CHECK constraint 위반, null 반환");
+      return null;
+    }
     throw error;
   }
   return data?.id ?? null;
@@ -124,6 +169,11 @@ export async function getUserInfo({ clerkUserId }: { clerkUserId: string }) {
 
   if (error) {
     console.error("[action] getUserInfo 실패", error);
+    // CHECK constraint 위반은 null 반환 (기본값 사용)
+    if (error.code === "23514") {
+      console.warn("[action] getUserInfo CHECK constraint 위반, null 반환");
+      return null;
+    }
     throw error;
   }
 
@@ -200,7 +250,14 @@ export async function saveDevice({
 
   let userId = await getUserIdByClerkId(supabase, clerkUserId);
   if (!userId) {
-    userId = await syncUser({ clerkUserId, email: null });
+    try {
+      userId = await syncUser({ clerkUserId, email: null });
+    } catch (error: any) {
+      // syncUser 실패 시에도 계속 진행 (기기 저장은 나중에 가능)
+      console.error("[action] saveDevice syncUser 실패, 사용자 없이 진행", error);
+      // 사용자가 없으면 기기를 저장할 수 없으므로 에러 throw
+      throw new Error("사용자를 생성할 수 없습니다. 데이터베이스 마이그레이션을 확인해주세요.");
+    }
   }
 
   const { error } = await supabase.from("devices").insert({
